@@ -3,7 +3,6 @@ package config
 import "runtime"
 
 func (c SQLConfig) WithDefaults() SQLConfig {
-
 	if c.Host == "" {
 		c.Host = "127.0.0.1"
 	}
@@ -23,12 +22,6 @@ func (c SQLConfig) WithDefaults() SQLConfig {
 		c.Options = "sslmode=disable"
 	}
 
-	// timeout
-	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 5
-	}
-
-	// Pool
 	if c.MaxConn == 0 {
 		c.MaxConn = runtime.NumCPU() * 4
 	}
@@ -44,13 +37,11 @@ func (c SQLConfig) WithDefaults() SQLConfig {
 	if c.HealthCheckPeriod == 0 {
 		c.HealthCheckPeriod = 30
 	}
-
-	// Retry
-	if c.StartInterval == 0 {
-		c.StartInterval = 2
+	if c.ConnectTimeout == 0 {
+		c.ConnectTimeout = 5
 	}
-	if c.MaxError == 0 {
-		c.MaxError = 5
+	if !c.AutoReconnect {
+		c.AutoReconnect = true
 	}
 
 	return c

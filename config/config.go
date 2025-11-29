@@ -22,18 +22,14 @@ type SQLConfig struct {
 	AutoReconnect bool `yaml:"autoReconnect" default:"true"`
 
 	// Pooling
-	CustomPool        bool `yaml:"customPool" default:"false"`
-	MaxConn           int  `yaml:"maxConn" default:"0"` // auto: CPU*4
-	MinConn           int  `yaml:"minConn" default:"0"` // auto: CPU
-	MaxConnIdleTime   int  `yaml:"maxConnIdleTime" default:"60"`
-	LifeTime          int  `yaml:"lifeTime" default:"30"`
-	HealthCheckPeriod int  `yaml:"healthCheckPeriod" default:"30"`
+	MaxConn           int `yaml:"maxConn" default:"0"` // auto: CPU*4
+	MinConn           int `yaml:"minConn" default:"0"` // auto: CPU
+	MaxConnIdleTime   int `yaml:"maxConnIdleTime" default:"60"`
+	LifeTime          int `yaml:"lifeTime" default:"30"`
+	HealthCheckPeriod int `yaml:"healthCheckPeriod" default:"30"`
 
 	// Timeout
 	ConnectTimeout int `yaml:"connectTimeout" default:"5"`
-
-	// PGX simple protocol
-	SimpleProtocol bool `yaml:"simpleProtocol" default:"false"`
 
 	// Retry
 	StartInterval int `yaml:"startInterval" default:"2"`
