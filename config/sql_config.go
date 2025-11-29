@@ -1,6 +1,9 @@
 package config
 
+import "runtime"
+
 func (c SQLConfig) WithDefaults() SQLConfig {
+
 	if c.Host == "" {
 		c.Host = "127.0.0.1"
 	}
@@ -20,28 +23,29 @@ func (c SQLConfig) WithDefaults() SQLConfig {
 		c.Options = "sslmode=disable"
 	}
 
+	// timeout
 	if c.ConnectTimeout == 0 {
 		c.ConnectTimeout = 5
 	}
 
-	if c.CustomPool {
-		if c.MaxConn == 0 {
-			c.MaxConn = 20
-		}
-		if c.MinConn == 0 {
-			c.MinConn = 2
-		}
-		if c.MaxConnIdleTime == 0 {
-			c.MaxConnIdleTime = 60
-		}
-		if c.LifeTime == 0 {
-			c.LifeTime = 30
-		}
-		if c.HealthCheckPeriod == 0 {
-			c.HealthCheckPeriod = 30
-		}
+	// Pool
+	if c.MaxConn == 0 {
+		c.MaxConn = runtime.NumCPU() * 4
+	}
+	if c.MinConn == 0 {
+		c.MinConn = runtime.NumCPU()
+	}
+	if c.MaxConnIdleTime == 0 {
+		c.MaxConnIdleTime = 60
+	}
+	if c.LifeTime == 0 {
+		c.LifeTime = 30
+	}
+	if c.HealthCheckPeriod == 0 {
+		c.HealthCheckPeriod = 30
 	}
 
+	// Retry
 	if c.StartInterval == 0 {
 		c.StartInterval = 2
 	}

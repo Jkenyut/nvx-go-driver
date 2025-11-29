@@ -15,30 +15,31 @@ type SQLConfig struct {
 	Database string `yaml:"database" default:"postgres"`
 	Options  string `yaml:"options" default:"sslmode=disable"`
 
-	// Optional: override full DSN
+	// Override DSN manual
 	Connection string `yaml:"connection" default:""`
 
 	// Behavior
 	AutoReconnect bool `yaml:"autoReconnect" default:"true"`
 
-	// PGX Pool defaults (production best practice)
+	// Pooling
 	CustomPool        bool `yaml:"customPool" default:"false"`
-	MaxConn           int  `yaml:"maxConn" default:"20"`         // best for most microservices
-	MinConn           int  `yaml:"minConn" default:"2"`          // keeps warm
-	MaxConnIdleTime   int  `yaml:"maxConnIdleTime" default:"60"` // seconds
-	LifeTime          int  `yaml:"lifeTime" default:"30"`        // minutes
-	HealthCheckPeriod int  `yaml:"healthCheck" default:"30"`     // seconds
+	MaxConn           int  `yaml:"maxConn" default:"0"` // auto: CPU*4
+	MinConn           int  `yaml:"minConn" default:"0"` // auto: CPU
+	MaxConnIdleTime   int  `yaml:"maxConnIdleTime" default:"60"`
+	LifeTime          int  `yaml:"lifeTime" default:"30"`
+	HealthCheckPeriod int  `yaml:"healthCheckPeriod" default:"30"`
 
 	// Timeout
-	ConnectTimeout int `yaml:"connectTimeout" default:"5"` // seconds
+	ConnectTimeout int `yaml:"connectTimeout" default:"5"`
 
-	// Disable prepared stmt (rare)
+	// PGX simple protocol
 	SimpleProtocol bool `yaml:"simpleProtocol" default:"false"`
 
 	// Retry
-	StartInterval int  `yaml:"startInterval" default:"2"`
-	MaxError      int  `yaml:"maxError" default:"5"`
-	UseMock       bool `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	StartInterval int `yaml:"startInterval" default:"2"`
+	MaxError      int `yaml:"maxError" default:"5"`
+
+	UseMock bool `yaml:"useMock" default:"false"`
 }
 
 type RabbitMQConfig struct {
