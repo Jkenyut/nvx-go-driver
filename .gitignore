@@ -1,0 +1,140 @@
+# =============================================================================
+# GO GENERAL
+# =============================================================================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+*.prof
+
+# Build output
+/bin/
+/dist/
+/build/
+/tmp/
+
+# Go workspace file (jika pakai multi-module)
+go.work
+go.work.sum
+
+# Dependency cache & vendor (opsional, uncomment jika pakai vendor)
+# vendor/
+
+# Coverage & profiling
+coverage.*
+*.coverprofile
+
+# =============================================================================
+# JETBRAINS / GOLAND / INTELLIJ
+# =============================================================================
+# Project files
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Generated files & caches
+out/
+cmake-build-*/
+
+# User-specific (paling sering berubah & sensitif)
+.idea/**/workspace.xml
+.idea/**/tasks.xml
+.idea/**/usage.statistics.xml
+.idea/**/dictionaries
+.idea/**/shelf
+.idea/**/aws.xml
+.idea/**/dataSources/
+.idea/**/dataSources.ids
+.idea/**/dataSources.local.xml
+.idea/**/sqlDataSources.xml
+.idea/**/dynamic.xml
+.idea/**/uiDesigner.xml
+.idea/**/dbnavigator.xml
+.idea/**/mongoSettings.xml
+.idea/**/httpRequests/
+.idea/**/sonarlint/
+
+# Gradle/Maven auto-import (jika tidak dipakai, tetap di-ignore)
+.idea/**/gradle.xml
+.idea/**/libraries
+.idea/artifacts/
+.idea/compiler.xml
+.idea/jarRepositories.xml
+.idea/modules.xml
+
+# =============================================================================
+# CONFIG & SECRETS (penting banget!)
+# =============================================================================
+# Config lokal (jangan pernah commit config asli!)
+config.yaml
+config.yml
+config.local.*
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+*.crt
+
+# Tapi tetap commit contoh config!
+# !config.example.yaml
+# !config.example.yml
+
+# =============================================================================
+# OS & EDITOR
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# VS Code (kalau ada yang pakai)
+.vscode/
+
+# =============================================================================
+# MISC
+# =============================================================================
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+tmp/
+temp/
+
+# Crash reports
+*.dmp
+
+# =============================================================================
+# ALLOWED (jangan di-ignore)
+# =============================================================================
+# Pastikan file contoh config tetap masuk git
+!config.example.yaml
+!config.example.yml
+!.env.example
+!docker-compose.yml
+!Dockerfile
