@@ -2,8 +2,10 @@ package config
 
 // Listener default config
 type Listener struct {
-	Listen string `yaml:"listen" default:"0.0.0.0"`
-	Port   int    `yaml:"port" default:"8081"`
+	Listen      string `yaml:"listen" default:"0.0.0.0"`
+	Port        int    `yaml:"port" default:"8081"`
+	NameService string `yaml:"nameService" default:"service-name"`
+	Env         string `yaml:"env" default:"development"`
 }
 
 type SQLConfig struct {
