@@ -1,13 +1,18 @@
+// config/sql.go
 package config
 
-import "runtime"
+import (
+	"runtime"
+)
 
-// WithDefaults — versi FINAL yang 100% cocok dengan PGXClient kita
+// WithDefaults applies sensible, battle-tested defaults for pgx/v5 pool
+// All time-based values are in **seconds** to match time.Duration usage
 func (c SQLConfig) WithDefaults() SQLConfig {
 	if !c.Enable {
-		return c // kalau disable, skip semua
+		return c // disabled → no changes
 	}
 
+	// Connection basics
 	if c.Host == "" {
 		c.Host = "127.0.0.1"
 	}
@@ -27,27 +32,29 @@ func (c SQLConfig) WithDefaults() SQLConfig {
 		c.Options = "sslmode=disable"
 	}
 
-	// Auto sizing berdasarkan CPU (rekomendasi production 2025)
+	// Auto-scaling connection pool based on CPU cores (2025 best practice)
 	if c.MaxConn <= 0 {
-		c.MaxConn = runtime.NumCPU() * 8 // lebih agresif dari *4 → lebih cepat di high load
+		c.MaxConn = runtime.NumCPU() * 8 // aggressive for high concurrency
 	}
 	if c.MinConn <= 0 {
-		c.MinConn = max(4, runtime.NumCPU()) // minimal 4, biar startup cepat
+		c.MinConn = max(4, runtime.NumCPU()) // at least 4 for fast startup
 	}
 
-	// Default yang sudah terbukti optimal di production besar
+	// Time-based defaults in **seconds**
 	if c.MaxConnLifetime == 0 {
-		c.MaxConnLifetime = 60 // 1 jam (pgx default)
+		c.MaxConnLifetime = 3600 // 1 hour — prevents stale connections
 	}
 	if c.MaxConnIdleTime == 0 {
-		c.MaxConnIdleTime = 10 // 10 menit (lebih hemat memori)
+		c.MaxConnIdleTime = 600 // 10 minutes — frees unused memory
 	}
 	if c.HealthCheckPeriod == 0 {
-		c.HealthCheckPeriod = 15 // 15 detik (cukup cepat deteksi mati)
+		c.HealthCheckPeriod = 15 // 15 seconds — fast failure detection
 	}
 	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10 // 10 detik (lebih aman dari 5)
+		c.ConnectTimeout = 10 // 10 seconds — safe for cloud/network flakes
 	}
+
+	// Reconnect behavior
 	if !c.AutoReconnect {
 		c.AutoReconnect = true
 	}

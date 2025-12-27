@@ -17,20 +17,19 @@ type SQLConfig struct {
 	Database string `yaml:"database" json:"database"`
 	Options  string `yaml:"options" json:"options"`
 
-	// Full override DSN
+	// Optional full connection string override
 	Connection string `yaml:"connection" json:"connection"`
 
-	// Pool Settings (pgxpool)
-	MaxConn           int `yaml:"max_conn" json:"max_conn" default:"0"`                        // 0 = auto (CPU*8)
-	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`                        // 0 = auto (CPU)
-	MaxConnLifetime   int `yaml:"max_conn_lifetime" json:"max_conn_lifetime" default:"60"`     // menit
-	MaxConnIdleTime   int `yaml:"max_conn_idle_time" json:"max_conn_idle_time" default:"10"`   // menit
-	HealthCheckPeriod int `yaml:"health_check_period" json:"health_check_period" default:"15"` // detik
+	// Pool settings
+	MaxConn           int `yaml:"max_conn" json:"max_conn"`                                       // 0 = auto (CPU × 8)
+	MinConn           int `yaml:"min_conn" json:"min_conn"`                                       // 0 = auto (max 4, CPU)
+	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds"`     // seconds
+	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds"`   // seconds
+	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds"` // seconds
 
-	ConnectTimeout int `yaml:"connect_timeout" json:"connect_timeout" default:"10"` // detik
+	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds"` // seconds
 
-	// Behavior
-	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
+	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect"`
 
 	// Untuk future / extensibility
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
