@@ -38,6 +38,7 @@ import (
 
 	"github.com/Jkenyut/nvx-go-driver/config"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 )
@@ -171,6 +172,48 @@ func (c *PGXClient) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, err
 func (c *PGXClient) IsClosed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
 }
+
+// Exec executes a SQL command (INSERT, UPDATE, DELETE) and returns the tag.
+func (c *PGXClient) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return pgconn.CommandTag{}, errors.New("database client is closed or not initialized")
+	}
+	return pool.Exec(ctx, sql, args...)
+}
+
+// Query executes a SQL query and returns rows.
+func (c *PGXClient) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.Query(ctx, sql, args...)
+}
+
+// QueryRow executes a SQL query that returns a single row.
+func (c *PGXClient) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	pool := c.Pool()
+	if pool == nil {
+		return errRow{errors.New("database client is closed or not initialized")}
+	}
+	return pool.QueryRow(ctx, sql, args...)
+}
+
+// Begin starts a transaction.
+func (c *PGXClient) Begin(ctx context.Context) (pgx.Tx, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.Begin(ctx)
+}
+
+type errRow struct {
+	err error
+}
+
+func (e errRow) Scan(dest ...any) error { return e.err }
 
 func (c *PGXClient) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(buildDSN(c.cfg))

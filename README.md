@@ -67,7 +67,10 @@ cfg := config.RedisConfig{
     Host:   "localhost",
     // Port defaults to 6379
 }
-client, err := redis.NewRedisClient(cfg, logger)
+// Shortcut methods (Simple Set/Get)
+err := client.Set(ctx, "key", "value", 0)
+val, err := client.Get(ctx, "key")
+
 ```
 
 | Config | Default | Description |
@@ -89,7 +92,10 @@ cfg := config.RabbitMQConfig{
 }
 mq, err := rabbitmq.NewRabbitMQClient(cfg, logger)
 
-// Thread-safe channel access
+// Shortcut: Fire-and-forget publish
+err := mq.Publish(ctx, "amq.topic", "routing.key", []byte("hello"))
+
+// Or use raw channel for advanced usage
 ch, err := mq.Channel()
 ```
 
@@ -99,18 +105,26 @@ Backed by `IBM/sarama`. Supports PLAIN and SASL/SSL.
 
 ```go
 import "github.com/Jkenyut/nvx-go-driver/kafka"
-
-cfg := config.KafkaConfig{
-    Enable:   true,
-    Host:     "pkc-xxx.confluent.cloud:9092",
-    Username: "API_KEY",
-    Password: "API_SECRET",
-    // Protocol inferred as SASL_SSL automatically
-}
+// ...
 kafkaFactory, err := kafka.NewKafkaClient(cfg, logger)
 
+// Shortcut: Simple Publish
+err := kafkaFactory.Publish(ctx, "my-topic", []byte("message"))
+
+// Advanced: Custom Producer/Consumer
 producer, _ := kafkaFactory.NewAsyncProducer()
 ```
+
+## Shortcuts Overview
+
+We provide high-level methods to avoid accessing low-level clients for common tasks:
+
+| Driver | Shortcut Methods |
+| :--- | :--- |
+| **Database** | `Exec`, `Query`, `QueryRow`, `Begin` |
+| **Redis** | `Set`, `Get`, `Del` |
+| **RabbitMQ** | `Publish` |
+| **Kafka** | `Publish` |
 
 ## Configuration
 

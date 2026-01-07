@@ -132,6 +132,23 @@ func (r *RedisClient) Close() error {
 	return r.client.Close()
 }
 
+// Set executes a simplified Redis SET command.
+// expiration of 0 means no expiration.
+func (r *RedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	return r.client.Set(ctx, key, value, expiration).Err()
+}
+
+// Get executes a simplified Redis GET command.
+// Returns redis.Nil error if key does not exist.
+func (r *RedisClient) Get(ctx context.Context, key string) (string, error) {
+	return r.client.Get(ctx, key).Result()
+}
+
+// Del executes a simplified Redis DEL command.
+func (r *RedisClient) Del(ctx context.Context, key string) error {
+	return r.client.Del(ctx, key).Err()
+}
+
 // Metrics returns observability metrics for the Redis pool.
 func (r *RedisClient) Metrics() RedisMetrics {
 	return RedisMetrics{

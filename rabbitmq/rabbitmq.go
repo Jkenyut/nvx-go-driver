@@ -1,6 +1,7 @@
 package rabbitmq
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -175,6 +176,26 @@ func (r *RabbitMQClient) isClosed() bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.closed
+}
+
+// Publish sends a message to the specified exchange with the given routing key.
+// It automatically retrieves a channel and acts as a fire-and-forget helper.
+// For critical data, consider using Channel() directly and handling Confirmations.
+func (r *RabbitMQClient) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+	ch, err := r.Channel()
+	if err != nil {
+		return err
+	}
+
+	return ch.PublishWithContext(ctx,
+		exchange,   // exchange
+		routingKey, // routing key
+		false,      // mandatory
+		false,      // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        body,
+		})
 }
 
 // Channel returns the current active channel safely.

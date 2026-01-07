@@ -1,9 +1,11 @@
 package kafka
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/IBM/sarama"
@@ -18,6 +20,10 @@ type KafkaClient struct {
 	saramaConf *sarama.Config
 	log        *zerolog.Logger
 	brokers    []string
+
+	// Internal singleton producer for shortcuts
+	producer sarama.SyncProducer
+	prodLock sync.Mutex
 }
 
 // NewKafkaClient creates a new Kafka factory.
@@ -133,4 +139,40 @@ func (k *KafkaClient) NewAsyncProducer() (sarama.AsyncProducer, error) {
 // It manages partition offsets and rebalancing automatically.
 func (k *KafkaClient) NewConsumerGroup(groupID string) (sarama.ConsumerGroup, error) {
 	return sarama.NewConsumerGroup(k.brokers, groupID, k.saramaConf)
+}
+
+// Publish sends a message to the specified topic.
+// It uses an internal synchronous producer (singleton) to ensure reliability.
+// This is a shortcut for creating a NewProducer() and sending a message.
+func (k *KafkaClient) Publish(ctx context.Context, topic string, value []byte) error {
+	k.prodLock.Lock()
+	defer k.prodLock.Unlock()
+
+	if k.producer == nil {
+		p, err := sarama.NewSyncProducer(k.brokers, k.saramaConf)
+		if err != nil {
+			return err
+		}
+		k.producer = p
+	}
+
+	_, _, err := k.producer.SendMessage(&sarama.ProducerMessage{
+		Topic: topic,
+		Value: sarama.ByteEncoder(value),
+	})
+	return err
+}
+
+// Close closes the internal producer if it was initialized.
+// Note: Created factories (NewProducer, etc) must be closed individually by the caller.
+func (k *KafkaClient) Close() error {
+	k.prodLock.Lock()
+	defer k.prodLock.Unlock()
+
+	if k.producer != nil {
+		err := k.producer.Close()
+		k.producer = nil
+		return err
+	}
+	return nil
 }
