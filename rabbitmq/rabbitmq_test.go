@@ -1,0 +1,72 @@
+package rabbitmq
+
+import (
+	"testing"
+
+	"github.com/Jkenyut/nvx-go-driver/config"
+	"github.com/rs/zerolog"
+)
+
+func TestApplyDefaults(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    config.RabbitMQConfig
+		expected config.RabbitMQConfig
+	}{
+		{
+			name:  "Empty Config",
+			input: config.RabbitMQConfig{},
+			expected: config.RabbitMQConfig{
+				Host:              "127.0.0.1",
+				Port:              5672,
+				Username:          "guest",
+				Password:          "guest",
+				ReconnectDuration: 5,
+			},
+		},
+		{
+			name: "Partial Config",
+			input: config.RabbitMQConfig{
+				Host: "rabbit-prod",
+			},
+			expected: config.RabbitMQConfig{
+				Host:              "rabbit-prod",
+				Port:              5672,
+				Username:          "guest",
+				Password:          "guest",
+				ReconnectDuration: 5,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := applyDefaults(tt.input)
+			if got.Host != tt.expected.Host {
+				t.Errorf("Host = %v, want %v", got.Host, tt.expected.Host)
+			}
+			if got.Port != tt.expected.Port {
+				t.Errorf("Port = %v, want %v", got.Port, tt.expected.Port)
+			}
+			if got.Username != tt.expected.Username {
+				t.Errorf("Username = %v, want %v", got.Username, tt.expected.Username)
+			}
+			if got.ReconnectDuration != tt.expected.ReconnectDuration {
+				t.Errorf("ReconnectDuration = %v, want %v", got.ReconnectDuration, tt.expected.ReconnectDuration)
+			}
+		})
+	}
+}
+
+func TestNewRabbitMQClient_Disabled(t *testing.T) {
+	logger := zerolog.Nop()
+	cfg := config.RabbitMQConfig{Enable: false}
+
+	client, err := NewRabbitMQClient(cfg, &logger)
+	if err == nil {
+		t.Error("expected error when disabled, got nil")
+	}
+	if client != nil {
+		t.Error("expected nil client when disabled")
+	}
+}
