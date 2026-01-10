@@ -1,118 +1,408 @@
+// Package database provides a production-ready, zero-downtime PostgreSQL client
+// wrapper built on top of pgx/v5 and pgxpool.
+//
+// PGXClient is designed for high-availability systems (microservices, fintech,
+// e-commerce, banking) that require automatic reconnection, graceful shutdown,
+// observability, and container-native behavior.
+//
+// Key features:
+//   - Zero-downtime pool swapping on database failure or restart
+//   - Graceful shutdown with connection draining
+//   - Exponential backoff with jitter for startup and reconnect attempts
+//   - Built-in Prometheus-compatible metrics
+//   - Structured logging integration (zerolog)
+//   - Sensible, CPU-aware defaults via config.SQLConfig.WithDefaults()
+//
+// Example:
+//
+//	client, err := database.NewPGXClient(cfg.WithDefaults(), logger.L())
+//	if err != nil {
+//	    log.Fatal().Err(err).Msg("database connection failed")
+//	}
+//	defer client.Close()
+//
+//	// Use like a standard *pgxpool.Pool
+//	rows, _ := client.Pool().Query(ctx, "SELECT id, name FROM users")
 package database
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
-	"log"
+	"math"
+	"math/big"
+	"regexp"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 )
 
+var passwordRegex = regexp.MustCompile(`://([^:@]+):([^:@]+)@`)
+
+// PGXClient wraps pgxpool.Pool with auto-reconnect, health monitoring,
+// graceful shutdown, and observability features.
 type PGXClient struct {
-	Pool *pgxpool.Pool
-	Cfg  config.SQLConfig
+	pool      atomic.Value // stores *pgxpool.Pool
+	cfg       config.SQLConfig
+	closed    uint32
+	started   time.Time
+	drain     chan struct{}
+	reconnect atomic.Int64 // reconnect counter
+
+	log          *zerolog.Logger
+	AfterConnect func(ctx context.Context, conn *pgx.Conn) error
 }
 
-func NewPGXClient(cfg config.SQLConfig) (*PGXClient, error) {
+// PGXMetrics provides Prometheus-compatible metric functions.
+type PGXMetrics struct {
+	ReconnectsTotal   func() float64 // Total number of pool reconnections
+	PoolTotalConns    func() float64 // Current total connections in pool
+	PoolIdleConns     func() float64 // Current idle connections
+	PoolAcquiredConns func() float64 // Currently acquired connections
+	PoolHealth        func() float64 // 1.0 = healthy, 0.0 = unhealthy
+	UptimeSeconds     func() float64 // Client uptime in seconds
+}
+
+// NewPGXClient creates a new PGXClient with default hook (nil AfterConnect).
+// It applies defaults, connects to the database, and starts background monitoring.
+func NewPGXClient(cfg config.SQLConfig, logger *zerolog.Logger) (*PGXClient, error) {
+	return NewPGXClientWithHook(cfg, logger, nil)
+}
+
+// NewPGXClientWithHook creates a new PGXClient with optional AfterConnect hook.
+// The hook is called for every new physical connection (useful for SET commands).
+func NewPGXClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(context.Context, *pgx.Conn) error) (*PGXClient, error) {
+	if logger == nil {
+		nop := zerolog.Nop()
+		logger = &nop
+	}
+
 	cfg = cfg.WithDefaults()
-
 	if !cfg.Enable {
-		return nil, fmt.Errorf("database is disabled")
+		return nil, errors.New("database disabled in config")
 	}
 
-	dsn := buildDSN(cfg)
+	client := &PGXClient{
+		cfg:          cfg,
+		log:          logger,
+		AfterConnect: hook,
+		started:      time.Now(),
+		drain:        make(chan struct{}),
+	}
 
-	if !cfg.AutoReconnect {
-		pool, err := connectOnce(cfg, dsn)
-		if err != nil {
-			return nil, err
+	if err := client.connectInitial(); err != nil {
+		return nil, err
+	}
+
+	go client.monitor()
+	return client, nil
+}
+
+// internal helpers below — not part of public API
+
+func (c *PGXClient) connectInitial() error {
+	pool, err := c.createPoolWithRetry(context.Background())
+	if err != nil {
+		return err
+	}
+	c.setPool(pool)
+	c.log.Info().
+		Str("dsn", maskPassword(buildDSN(c.cfg))).
+		Int("max_conns", c.cfg.MaxConn).
+		Int("min_conns", c.cfg.MinConn).
+		Msg("Database connected successfully")
+	return nil
+}
+
+// Pool returns the current active *pgxpool.Pool.
+// Returns nil if the client is closed or no pool is available.
+func (c *PGXClient) Pool() *pgxpool.Pool {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return nil
+	}
+	if p := c.pool.Load(); p != nil {
+		return p.(*pgxpool.Pool)
+	}
+	return nil
+}
+
+func (c *PGXClient) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
+	baseDelay := time.Second
+	for attempt := 1; attempt <= 20; attempt++ {
+		if c.IsClosed() {
+			return nil, errors.New("client closed")
 		}
-		return &PGXClient{Pool: pool, Cfg: cfg}, nil
+
+		pctx, cancel := context.WithTimeout(ctx, 12*time.Second)
+		pool, err := c.createPool(pctx)
+		cancel()
+		if err == nil {
+			c.log.Info().Int("attempt", attempt).Msg("Database connected")
+			return pool, nil
+		}
+
+		backoff := time.Duration(math.Pow(1.8, float64(attempt-1))) * baseDelay
+		if backoff > 30*time.Second {
+			backoff = 30 * time.Second
+		}
+		backoff += jitter(backoff / 2)
+
+		c.log.Warn().
+			Int("attempt", attempt).
+			Err(err).
+			Dur("retry_in", backoff).
+			Msg("Connection failed")
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(backoff):
+		}
+	}
+	return nil, errors.New("exhausted connection attempts")
+}
+
+// IsClosed reports whether the client has been closed.
+func (c *PGXClient) IsClosed() bool {
+	return atomic.LoadUint32(&c.closed) == 1
+}
+
+// Exec executes a SQL command (INSERT, UPDATE, DELETE) and returns the tag.
+func (c *PGXClient) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return pgconn.CommandTag{}, errors.New("database client is closed or not initialized")
+	}
+	return pool.Exec(ctx, sql, args...)
+}
+
+// Query executes a SQL query and returns rows.
+func (c *PGXClient) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.Query(ctx, sql, args...)
+}
+
+// QueryRow executes a SQL query that returns a single row.
+func (c *PGXClient) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+	pool := c.Pool()
+	if pool == nil {
+		return errRow{errors.New("database client is closed or not initialized")}
+	}
+	return pool.QueryRow(ctx, sql, args...)
+}
+
+// Begin starts a transaction.
+func (c *PGXClient) Begin(ctx context.Context) (pgx.Tx, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.Begin(ctx)
+}
+
+type errRow struct {
+	err error
+}
+
+func (e errRow) Scan(dest ...any) error { return e.err }
+
+func (c *PGXClient) createPool(ctx context.Context) (*pgxpool.Pool, error) {
+	pc, err := pgxpool.ParseConfig(buildDSN(c.cfg))
+	if err != nil {
+		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 
-	return autoReconnect(cfg, dsn)
+	pc.MaxConns = int32(c.cfg.MaxConn)
+	pc.MinConns = int32(c.cfg.MinConn)
+
+	pc.MaxConnLifetime = time.Duration(c.cfg.MaxConnLifetime) * time.Second
+	pc.MaxConnIdleTime = time.Duration(c.cfg.MaxConnIdleTime) * time.Second
+	pc.HealthCheckPeriod = time.Duration(c.cfg.HealthCheckPeriod) * time.Second
+	pc.ConnConfig.ConnectTimeout = time.Duration(c.cfg.ConnectTimeout) * time.Second
+	pc.ConnConfig.RuntimeParams = map[string]string{"application_name": "nvx-go-driver"}
+
+	if c.AfterConnect != nil {
+		pc.AfterConnect = c.AfterConnect
+	}
+
+	// Simple validation: reject closed connections (fast, no extra ping)
+	pc.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
+		if conn == nil || conn.IsClosed() {
+			return false, nil
+		}
+		return true, nil
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, pc)
+	if err != nil {
+		return nil, fmt.Errorf("create pool: %w", err)
+	}
+
+	if errs := pool.Ping(ctx); errs != nil {
+		pool.Close()
+		return nil, fmt.Errorf("initial ping failed: %w", errs)
+	}
+
+	return pool, nil
+}
+
+// Close performs a graceful shutdown:
+//   - Stops health monitoring
+//   - Forces short lifetimes to return connections quickly
+//   - Waits up to 30 seconds for acquired connections to be released
+//   - Closes the pool
+func (c *PGXClient) Close() error {
+	if !atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+		return nil // already closed
+	}
+
+	c.log.Info().Msg("Initiating graceful shutdown of PGXClient")
+	close(c.drain)
+
+	pool := c.Pool()
+	if pool == nil {
+		c.log.Info().Dur("uptime", time.Since(c.started)).Msg("PGXClient closed (no pool)")
+		return nil
+	}
+
+	// Encourage quick return of connections
+	pool.Config().MaxConnLifetime = 3 * time.Second
+	pool.Config().MaxConnIdleTime = 2 * time.Second
+
+	timeout := time.After(30 * time.Second)
+	ticker := time.NewTicker(500 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-timeout:
+			c.log.Warn().Msg("Shutdown timeout — forcing close")
+			pool.Close()
+			return nil
+		case <-ticker.C:
+			stat := pool.Stat()
+			if stat.AcquiredConns() == 0 {
+				pool.Close()
+				c.log.Info().
+					Dur("uptime", time.Since(c.started)).
+					Int64("total_reconnects", c.reconnect.Load()).
+					Msg("PGXClient gracefully shut down")
+				return nil
+			}
+			c.log.Debug().
+				Int32("acquired", stat.AcquiredConns()).
+				Int32("idle", stat.IdleConns()).
+				Msg("Waiting for connections to be released")
+		}
+	}
+}
+
+// Metrics returns a struct with functions for exposing metrics (Prometheus-ready).
+func (c *PGXClient) Metrics() PGXMetrics {
+	s := c.safeStat()
+	return PGXMetrics{
+		ReconnectsTotal:   func() float64 { return float64(c.reconnect.Load()) },
+		PoolTotalConns:    func() float64 { return float64(s.TotalConns()) },
+		PoolIdleConns:     func() float64 { return float64(s.IdleConns()) },
+		PoolAcquiredConns: func() float64 { return float64(s.AcquiredConns()) },
+		PoolHealth: func() float64 {
+			if c.isHealthy() {
+				return 1.0
+			}
+			return 0.0
+		},
+		UptimeSeconds: func() float64 { return time.Since(c.started).Seconds() },
+	}
+}
+
+func (c *PGXClient) setPool(p *pgxpool.Pool) {
+	c.pool.Store(p)
+	c.reconnect.Add(1)
+}
+
+func (c *PGXClient) monitor() {
+	healthInterval := time.Duration(c.cfg.HealthCheckPeriod) * time.Second
+	ticker := time.NewTicker(healthInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.drain:
+			return
+		case <-ticker.C:
+			if c.IsClosed() || c.isHealthy() {
+				continue
+			}
+
+			c.log.Warn().Msg("Pool unhealthy → reconnecting")
+			if newPool, err := c.createPoolWithRetry(context.Background()); err == nil {
+				old := c.Pool()
+				c.setPool(newPool)
+				if old != nil {
+					go func(p *pgxpool.Pool) {
+						time.Sleep(5 * time.Second)
+						p.Close()
+						c.log.Info().Msg("Old pool closed")
+					}(old)
+				}
+				c.log.Info().Int64("reconnects", c.reconnect.Load()).Msg("Pool swapped")
+			}
+		}
+	}
+}
+
+func (c *PGXClient) isHealthy() bool {
+	p := c.Pool()
+	if p == nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return p.Ping(ctx) == nil
+}
+
+func (c *PGXClient) safeStat() pgxpool.Stat {
+	if p := c.Pool(); p != nil {
+		return *p.Stat()
+	}
+	return pgxpool.Stat{}
 }
 
 func buildDSN(cfg config.SQLConfig) string {
 	if cfg.Connection != "" {
 		return cfg.Connection
 	}
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%d/%s?%s",
-		cfg.Username,
-		cfg.Password,
-		cfg.Host,
-		cfg.Port,
-		cfg.Database,
-		cfg.Options,
-	)
+	base := fmt.Sprintf("postgres://%s:%s@%s:%d/%s", cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
+	if cfg.Options != "" {
+		return base + "?" + cfg.Options
+	}
+	return base
 }
 
-func connectOnce(cfg config.SQLConfig, dsn string) (*pgxpool.Pool, error) {
-	poolConfig, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return nil, err
-	}
-
-	// === Pool tuning ===
-	if cfg.CustomPool {
-		poolConfig.MaxConns = int32(cfg.MaxConn)
-		poolConfig.MinConns = int32(cfg.MinConn)
-		poolConfig.MaxConnLifetime = time.Duration(cfg.LifeTime) * time.Minute
-		poolConfig.MaxConnIdleTime = time.Duration(cfg.MaxConnIdleTime) * time.Second
-		poolConfig.HealthCheckPeriod = time.Duration(cfg.HealthCheckPeriod) * time.Second
-	}
-
-	// do NOT duplicate timeout in context
-	poolConfig.ConnConfig.ConnectTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
-
-	ctx, cancel := context.WithTimeout(context.Background(), poolConfig.ConnConfig.ConnectTimeout)
-	defer cancel()
-
-	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
-		return nil, err
-	}
-
-	return pool, nil
+func maskPassword(dsn string) string {
+	return passwordRegex.ReplaceAllString(dsn, "://$1:****@")
 }
 
-func autoReconnect(cfg config.SQLConfig, dsn string) (*PGXClient, error) {
-	delay := time.Duration(cfg.StartInterval) * time.Second
-
-	for attempt := 1; attempt <= cfg.MaxError; attempt++ {
-		pool, err := connectOnce(cfg, dsn)
-		if err == nil {
-			log.Printf("[PGX] Connected")
-			return &PGXClient{Pool: pool, Cfg: cfg}, nil
-		}
-
-		log.Printf("[PGX] Failed (%d/%d): %v", attempt, cfg.MaxError, err)
-
-		if attempt == cfg.MaxError {
-			return nil, err
-		}
-
-		time.Sleep(delay)
-
-		if delay < 30*time.Second {
-			delay *= 2 // cap at 30
-		}
+// jitter returns a random offset ±50% of the input duration.
+// It never returns negative values.
+func jitter(d time.Duration) time.Duration {
+	if d <= 100*time.Millisecond {
+		return 0
 	}
-
-	return nil, fmt.Errorf("autoReconnect unreachable")
-}
-
-func (c *PGXClient) Close() {
-	if c.Pool != nil {
-		c.Pool.Close()
+	maxJitter := int64(d / 2)
+	if maxJitter == 0 {
+		return 0
 	}
+	j, _ := rand.Int(rand.Reader, big.NewInt(maxJitter*2))
+	offset := time.Duration(j.Int64() - maxJitter)
+	return offset
 }

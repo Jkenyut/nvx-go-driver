@@ -2,43 +2,37 @@ package config
 
 // Listener default config
 type Listener struct {
-	Listen string `yaml:"listen" default:"0.0.0.0"`
-	Port   int    `yaml:"port" default:"8081"`
+	Listen      string `yaml:"listen" default:"0.0.0.0"`
+	Port        int    `yaml:"port" default:"8081"`
+	NameService string `yaml:"nameService" default:"service-name"`
+	Env         string `yaml:"env" default:"development"`
 }
 
 type SQLConfig struct {
-	Enable   bool   `yaml:"enable" default:"false"`
-	Host     string `yaml:"host" default:"127.0.0.1"`
-	Port     int    `yaml:"port" default:"5432"`
-	Username string `yaml:"username" default:"postgres"`
-	Password string `yaml:"password" default:"postgres"`
-	Database string `yaml:"database" default:"postgres"`
-	Options  string `yaml:"options" default:"sslmode=disable"`
+	Enable   bool   `yaml:"enable" json:"enable" default:"true"`
+	Host     string `yaml:"host" json:"host"`
+	Port     int    `yaml:"port" json:"port" default:"5432"`
+	Username string `yaml:"username" json:"username"`
+	Password string `yaml:"password" json:"password"`
+	Database string `yaml:"database" json:"database"`
+	Options  string `yaml:"options" json:"options"`
 
-	// Optional: override full DSN
-	Connection string `yaml:"connection" default:""`
+	// Optional full connection string override
+	Connection string `yaml:"connection" json:"connection"`
 
-	// Behavior
-	AutoReconnect bool `yaml:"autoReconnect" default:"true"`
+	// Pool settings
+	MaxConn           int `yaml:"max_conn" json:"max_conn"`                                       // 0 = auto (CPU × 8)
+	MinConn           int `yaml:"min_conn" json:"min_conn"`                                       // 0 = auto (max 4, CPU)
+	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds"`     // seconds
+	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds"`   // seconds
+	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds"` // seconds
 
-	// PGX Pool defaults (production best practice)
-	CustomPool        bool `yaml:"customPool" default:"false"`
-	MaxConn           int  `yaml:"maxConn" default:"20"`         // best for most microservices
-	MinConn           int  `yaml:"minConn" default:"2"`          // keeps warm
-	MaxConnIdleTime   int  `yaml:"maxConnIdleTime" default:"60"` // seconds
-	LifeTime          int  `yaml:"lifeTime" default:"30"`        // minutes
-	HealthCheckPeriod int  `yaml:"healthCheck" default:"30"`     // seconds
+	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds"` // seconds
 
-	// Timeout
-	ConnectTimeout int `yaml:"connectTimeout" default:"5"` // seconds
+	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect"`
 
-	// Disable prepared stmt (rare)
-	SimpleProtocol bool `yaml:"simpleProtocol" default:"false"`
-
-	// Retry
-	StartInterval int  `yaml:"startInterval" default:"2"`
-	MaxError      int  `yaml:"maxError" default:"5"`
-	UseMock       bool `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	// Untuk future / extensibility
+	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
 }
 
 type RabbitMQConfig struct {
