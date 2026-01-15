@@ -12,9 +12,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RabbitMQClient handles connection to RabbitMQ with auto-reconnect,
+// Client handles connection to RabbitMQ with auto-reconnect,
 // thread-safe channel access, and graceful shutdown.
-type RabbitMQClient struct {
+type Client struct {
 	cfg  config.RabbitMQConfig
 	log  *zerolog.Logger
 	lock sync.RWMutex
@@ -25,7 +25,7 @@ type RabbitMQClient struct {
 	done    chan struct{}
 }
 
-// NewRabbitMQClient creates a new RabbitMQ client and starts the reconnect monitor.
+// NewClient creates a new RabbitMQ client and starts the reconnect monitor.
 // It applies sensible defaults for missing configuration values.
 //
 // Defaults applied:
@@ -41,7 +41,7 @@ type RabbitMQClient struct {
 //	    Enable: true,
 //	    Host:   "localhost",
 //	}
-//	mq, err := rabbitmq.NewRabbitMQClient(cfg, logger)
+//	mq, err := rabbitmq.NewClient(cfg, logger)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
@@ -52,7 +52,7 @@ type RabbitMQClient struct {
 //	if err == nil {
 //	    ch.Publish(...)
 //	}
-func NewRabbitMQClient(cfg config.RabbitMQConfig, logger *zerolog.Logger) (*RabbitMQClient, error) {
+func NewClient(cfg config.RabbitMQConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -64,7 +64,7 @@ func NewRabbitMQClient(cfg config.RabbitMQConfig, logger *zerolog.Logger) (*Rabb
 
 	cfg = applyDefaults(cfg)
 
-	client := &RabbitMQClient{
+	client := &Client{
 		cfg:  cfg,
 		log:  logger,
 		done: make(chan struct{}),
@@ -98,7 +98,7 @@ func applyDefaults(cfg config.RabbitMQConfig) config.RabbitMQConfig {
 	return cfg
 }
 
-func (r *RabbitMQClient) connect() error {
+func (r *Client) connect() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -127,7 +127,7 @@ func (r *RabbitMQClient) connect() error {
 	return nil
 }
 
-func (r *RabbitMQClient) reconnectLoop() {
+func (r *Client) reconnectLoop() {
 	for {
 		select {
 		case <-r.done:
@@ -172,7 +172,7 @@ func (r *RabbitMQClient) reconnectLoop() {
 	}
 }
 
-func (r *RabbitMQClient) isClosed() bool {
+func (r *Client) isClosed() bool {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	return r.closed
@@ -181,7 +181,7 @@ func (r *RabbitMQClient) isClosed() bool {
 // Publish sends a message to the specified exchange with the given routing key.
 // It automatically retrieves a channel and acts as a fire-and-forget helper.
 // For critical data, consider using Channel() directly and handling Confirmations.
-func (r *RabbitMQClient) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
+func (r *Client) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
 	ch, err := r.Channel()
 	if err != nil {
 		return err
@@ -203,7 +203,7 @@ func (r *RabbitMQClient) Publish(ctx context.Context, exchange, routingKey strin
 // The returned channel is thread-safe for most operations, but standard AMQP
 // protocol rules apply (don't share channels across threads for publishing if execution order matters significantly,
 // though standard usage is often fine).
-func (r *RabbitMQClient) Channel() (*amqp.Channel, error) {
+func (r *Client) Channel() (*amqp.Channel, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
 	if r.channel == nil || r.channel.IsClosed() {
@@ -213,7 +213,7 @@ func (r *RabbitMQClient) Channel() (*amqp.Channel, error) {
 }
 
 // Close gracefully shuts down the client and the reconnect monitor.
-func (r *RabbitMQClient) Close() error {
+func (r *Client) Close() error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 

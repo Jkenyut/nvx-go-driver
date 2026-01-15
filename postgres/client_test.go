@@ -1,4 +1,4 @@
-package database
+package postgres
 
 import (
 	"testing"
@@ -8,13 +8,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestNewPGXClient_Disabled(t *testing.T) {
+func TestNewClient_Disabled(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.SQLConfig{
 		Enable: false,
 	}
 
-	client, err := NewPGXClient(cfg, &logger)
+	client, err := NewClient(cfg, &logger)
 	if err == nil {
 		t.Error("expected error when config is disabled, got nil")
 	}
@@ -72,9 +72,9 @@ func TestBuildDSN(t *testing.T) {
 }
 
 func TestConfigDefaults(t *testing.T) {
-	// Since WithDefaults is in a different package (config) and is called by NewPGXClient,
-	// we want to ensure NewPGXClient applies them.
-	// However, NewPGXClient tries to connect.
+	// Since WithDefaults is in a different package (config) and is called by NewClient,
+	// we want to ensure NewClient applies them.
+	// However, NewClient tries to connect.
 	// For unit testing purely the config logic without DB, we might need to test config package directly
 	// or mock the connection.
 	//
@@ -88,12 +88,12 @@ func TestConfigDefaults(t *testing.T) {
 	}
 }
 
-func TestPGXMetrics_Structure(t *testing.T) {
+func TestMetrics_Structure(t *testing.T) {
 	// Basic test to ensure Metrics() doesn't panic on nil pool (which happens if initial connect fails)
-	// Actually NewPGXClient returns error if connect fails, so we can't easily get a client without DB.
+	// Actually NewClient returns error if connect fails, so we can't easily get a client without DB.
 	// But we can construct one manually for this test since it's same package.
 
-	client := &PGXClient{
+	client := &Client{
 		started: time.Now(),
 	}
 

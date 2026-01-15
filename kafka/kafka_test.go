@@ -47,11 +47,11 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
-func TestNewKafkaClient_Disabled(t *testing.T) {
+func TestNewClient_Disabled(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.KafkaConfig{Enable: false}
 
-	client, err := NewKafkaClient(cfg, &logger)
+	client, err := NewClient(cfg, &logger)
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}
