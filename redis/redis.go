@@ -11,16 +11,16 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// RedisClient wraps go-redis client with observability, automatic reconnect,
+// Client wraps go-redis client with observability, automatic reconnect,
 // and standard configuration.
-type RedisClient struct {
+type Client struct {
 	client *redis.Client
 	cfg    config.RedisConfig
 	log    *zerolog.Logger
 }
 
-// RedisMetrics provides Prometheus-compatible metric functions.
-type RedisMetrics struct {
+// Metrics provides Prometheus-compatible metric functions.
+type Metrics struct {
 	HitsTotal     func() float64
 	MissesTotal   func() float64
 	TimeoutsTotal func() float64
@@ -29,7 +29,7 @@ type RedisMetrics struct {
 	StaleConns    func() float64
 }
 
-// NewRedisClient creates a new Redis client with the provided configuration.
+// NewClient creates a new Redis client with the provided configuration.
 // It applies sensible defaults if specific fields (Host, Port, PoolSize) are missing.
 //
 // Defaults applied:
@@ -46,14 +46,14 @@ type RedisMetrics struct {
 //	    Host:   "localhost",
 //	    // Port defaults to 6379
 //	}
-//	client, err := redis.NewRedisClient(cfg, logger)
+//	client, err := redis.NewClient(cfg, logger)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //	defer client.Close()
 //
 //	val, err := client.Client().Get(ctx, "key").Result()
-func NewRedisClient(cfg config.RedisConfig, logger *zerolog.Logger) (*RedisClient, error) {
+func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -95,7 +95,7 @@ func NewRedisClient(cfg config.RedisConfig, logger *zerolog.Logger) (*RedisClien
 		Int("pool_size", cfg.PoolSize).
 		Msg("Redis connected successfully")
 
-	return &RedisClient{
+	return &Client{
 		client: rdb,
 		cfg:    cfg,
 		log:    logger,
@@ -122,36 +122,36 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 }
 
 // Client returns the underlying *redis.Client for direct usage.
-func (r *RedisClient) Client() *redis.Client {
+func (r *Client) Client() *redis.Client {
 	return r.client
 }
 
 // Close gracefully closes the Redis client connection.
-func (r *RedisClient) Close() error {
+func (r *Client) Close() error {
 	r.log.Info().Msg("Closing Redis client")
 	return r.client.Close()
 }
 
 // Set executes a simplified Redis SET command.
 // expiration of 0 means no expiration.
-func (r *RedisClient) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+func (r *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
 
 // Get executes a simplified Redis GET command.
 // Returns redis.Nil error if key does not exist.
-func (r *RedisClient) Get(ctx context.Context, key string) (string, error) {
+func (r *Client) Get(ctx context.Context, key string) (string, error) {
 	return r.client.Get(ctx, key).Result()
 }
 
 // Del executes a simplified Redis DEL command.
-func (r *RedisClient) Del(ctx context.Context, key string) error {
+func (r *Client) Del(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
 }
 
 // Metrics returns observability metrics for the Redis pool.
-func (r *RedisClient) Metrics() RedisMetrics {
-	return RedisMetrics{
+func (r *Client) Metrics() Metrics {
+	return Metrics{
 		HitsTotal: func() float64 {
 			stats := r.client.PoolStats()
 			return float64(stats.Hits)

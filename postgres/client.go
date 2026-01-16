@@ -15,7 +15,7 @@
 //
 // Example:
 //
-//	client, err := database.NewPGXClient(cfg.WithDefaults(), logger.L())
+//	client, err := postgres.NewClient(cfg.WithDefaults(), logger.L())
 //	if err != nil {
 //	    log.Fatal().Err(err).Msg("database connection failed")
 //	}
@@ -23,7 +23,7 @@
 //
 //	// Use like a standard *pgxpool.Pool
 //	rows, _ := client.Pool().Query(ctx, "SELECT id, name FROM users")
-package database
+package postgres
 
 import (
 	"context"
@@ -45,9 +45,9 @@ import (
 
 var passwordRegex = regexp.MustCompile(`://([^:@]+):([^:@]+)@`)
 
-// PGXClient wraps pgxpool.Pool with auto-reconnect, health monitoring,
+// Client wraps pgxpool.Pool with auto-reconnect, health monitoring,
 // graceful shutdown, and observability features.
-type PGXClient struct {
+type Client struct {
 	pool      atomic.Value // stores *pgxpool.Pool
 	cfg       config.SQLConfig
 	closed    uint32
@@ -59,8 +59,8 @@ type PGXClient struct {
 	AfterConnect func(ctx context.Context, conn *pgx.Conn) error
 }
 
-// PGXMetrics provides Prometheus-compatible metric functions.
-type PGXMetrics struct {
+// Metrics provides Prometheus-compatible metric functions.
+type Metrics struct {
 	ReconnectsTotal   func() float64 // Total number of pool reconnections
 	PoolTotalConns    func() float64 // Current total connections in pool
 	PoolIdleConns     func() float64 // Current idle connections
@@ -69,15 +69,15 @@ type PGXMetrics struct {
 	UptimeSeconds     func() float64 // Client uptime in seconds
 }
 
-// NewPGXClient creates a new PGXClient with default hook (nil AfterConnect).
+// NewClient creates a new Client with default hook (nil AfterConnect).
 // It applies defaults, connects to the database, and starts background monitoring.
-func NewPGXClient(cfg config.SQLConfig, logger *zerolog.Logger) (*PGXClient, error) {
-	return NewPGXClientWithHook(cfg, logger, nil)
+func NewClient(cfg config.SQLConfig, logger *zerolog.Logger) (*Client, error) {
+	return NewClientWithHook(cfg, logger, nil)
 }
 
-// NewPGXClientWithHook creates a new PGXClient with optional AfterConnect hook.
+// NewClientWithHook creates a new Client with optional AfterConnect hook.
 // The hook is called for every new physical connection (useful for SET commands).
-func NewPGXClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(context.Context, *pgx.Conn) error) (*PGXClient, error) {
+func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(context.Context, *pgx.Conn) error) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -88,7 +88,7 @@ func NewPGXClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook fun
 		return nil, errors.New("database disabled in config")
 	}
 
-	client := &PGXClient{
+	client := &Client{
 		cfg:          cfg,
 		log:          logger,
 		AfterConnect: hook,
@@ -106,7 +106,7 @@ func NewPGXClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook fun
 
 // internal helpers below — not part of public API
 
-func (c *PGXClient) connectInitial() error {
+func (c *Client) connectInitial() error {
 	pool, err := c.createPoolWithRetry(context.Background())
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (c *PGXClient) connectInitial() error {
 
 // Pool returns the current active *pgxpool.Pool.
 // Returns nil if the client is closed or no pool is available.
-func (c *PGXClient) Pool() *pgxpool.Pool {
+func (c *Client) Pool() *pgxpool.Pool {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return nil
 	}
@@ -132,7 +132,7 @@ func (c *PGXClient) Pool() *pgxpool.Pool {
 	return nil
 }
 
-func (c *PGXClient) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
+func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
 	baseDelay := time.Second
 	for attempt := 1; attempt <= 20; attempt++ {
 		if c.IsClosed() {
@@ -169,12 +169,12 @@ func (c *PGXClient) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, err
 }
 
 // IsClosed reports whether the client has been closed.
-func (c *PGXClient) IsClosed() bool {
+func (c *Client) IsClosed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
 }
 
 // Exec executes a SQL command (INSERT, UPDATE, DELETE) and returns the tag.
-func (c *PGXClient) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+func (c *Client) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	pool := c.Pool()
 	if pool == nil {
 		return pgconn.CommandTag{}, errors.New("database client is closed or not initialized")
@@ -183,7 +183,7 @@ func (c *PGXClient) Exec(ctx context.Context, sql string, args ...any) (pgconn.C
 }
 
 // Query executes a SQL query and returns rows.
-func (c *PGXClient) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+func (c *Client) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	pool := c.Pool()
 	if pool == nil {
 		return nil, errors.New("database client is closed or not initialized")
@@ -192,7 +192,7 @@ func (c *PGXClient) Query(ctx context.Context, sql string, args ...any) (pgx.Row
 }
 
 // QueryRow executes a SQL query that returns a single row.
-func (c *PGXClient) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+func (c *Client) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	pool := c.Pool()
 	if pool == nil {
 		return errRow{errors.New("database client is closed or not initialized")}
@@ -201,7 +201,7 @@ func (c *PGXClient) QueryRow(ctx context.Context, sql string, args ...any) pgx.R
 }
 
 // Begin starts a transaction.
-func (c *PGXClient) Begin(ctx context.Context) (pgx.Tx, error) {
+func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
 	pool := c.Pool()
 	if pool == nil {
 		return nil, errors.New("database client is closed or not initialized")
@@ -215,7 +215,7 @@ type errRow struct {
 
 func (e errRow) Scan(dest ...any) error { return e.err }
 
-func (c *PGXClient) createPool(ctx context.Context) (*pgxpool.Pool, error) {
+func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(buildDSN(c.cfg))
 	if err != nil {
 		return nil, fmt.Errorf("parse dsn: %w", err)
@@ -260,7 +260,7 @@ func (c *PGXClient) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 //   - Forces short lifetimes to return connections quickly
 //   - Waits up to 30 seconds for acquired connections to be released
 //   - Closes the pool
-func (c *PGXClient) Close() error {
+func (c *Client) Close() error {
 	if !atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
 		return nil // already closed
 	}
@@ -307,9 +307,9 @@ func (c *PGXClient) Close() error {
 }
 
 // Metrics returns a struct with functions for exposing metrics (Prometheus-ready).
-func (c *PGXClient) Metrics() PGXMetrics {
+func (c *Client) Metrics() Metrics {
 	s := c.safeStat()
-	return PGXMetrics{
+	return Metrics{
 		ReconnectsTotal:   func() float64 { return float64(c.reconnect.Load()) },
 		PoolTotalConns:    func() float64 { return float64(s.TotalConns()) },
 		PoolIdleConns:     func() float64 { return float64(s.IdleConns()) },
@@ -324,12 +324,12 @@ func (c *PGXClient) Metrics() PGXMetrics {
 	}
 }
 
-func (c *PGXClient) setPool(p *pgxpool.Pool) {
+func (c *Client) setPool(p *pgxpool.Pool) {
 	c.pool.Store(p)
 	c.reconnect.Add(1)
 }
 
-func (c *PGXClient) monitor() {
+func (c *Client) monitor() {
 	healthInterval := time.Duration(c.cfg.HealthCheckPeriod) * time.Second
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
@@ -360,7 +360,7 @@ func (c *PGXClient) monitor() {
 	}
 }
 
-func (c *PGXClient) isHealthy() bool {
+func (c *Client) isHealthy() bool {
 	p := c.Pool()
 	if p == nil {
 		return false
@@ -370,7 +370,7 @@ func (c *PGXClient) isHealthy() bool {
 	return p.Ping(ctx) == nil
 }
 
-func (c *PGXClient) safeStat() pgxpool.Stat {
+func (c *Client) safeStat() pgxpool.Stat {
 	if p := c.Pool(); p != nil {
 		return *p.Stat()
 	}

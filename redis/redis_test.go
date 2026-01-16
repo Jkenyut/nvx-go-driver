@@ -79,11 +79,11 @@ func TestApplyDefaults(t *testing.T) {
 	}
 }
 
-func TestNewRedisClient_Disabled(t *testing.T) {
+func TestNewClient_Disabled(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.RedisConfig{Enable: false}
 
-	client, err := NewRedisClient(cfg, &logger)
+	client, err := NewClient(cfg, &logger)
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}
