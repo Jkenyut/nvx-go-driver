@@ -29,7 +29,7 @@ import (
 	"os"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	"github.com/Jkenyut/nvx-go-driver/database"
+	"github.com/Jkenyut/nvx-go-driver/postgres"
 	"github.com/rs/zerolog"
 )
 
@@ -44,7 +44,7 @@ func main() {
 		Database: "mydb",
 	}
 
-	dbClient, err := database.NewPGXClient(cfg, &logger)
+	dbClient, err := postgres.NewClient(cfg, &logger)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to connect")
 	}
@@ -90,7 +90,7 @@ cfg := config.RabbitMQConfig{
     Host:   "localhost",
     // Auto-reconnects every 5s if lost
 }
-mq, err := rabbitmq.NewRabbitMQClient(cfg, logger)
+mq, err := rabbitmq.NewClient(cfg, logger)
 
 // Shortcut: Fire-and-forget publish
 err := mq.Publish(ctx, "amq.topic", "routing.key", []byte("hello"))
@@ -106,7 +106,7 @@ Backed by `IBM/sarama`. Supports PLAIN and SASL/SSL.
 ```go
 import "github.com/Jkenyut/nvx-go-driver/kafka"
 // ...
-kafkaFactory, err := kafka.NewKafkaClient(cfg, logger)
+kafkaFactory, err := kafka.NewClient(cfg, logger)
 
 // Shortcut: Simple Publish
 err := kafkaFactory.Publish(ctx, "my-topic", []byte("message"))

@@ -13,9 +13,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// KafkaClient acts as a factory for creating Producers and Consumers
+// Client acts as a factory for creating Producers and Consumers
 // with consistent configuration and logging.
-type KafkaClient struct {
+type Client struct {
 	cfg        config.KafkaConfig
 	saramaConf *sarama.Config
 	log        *zerolog.Logger
@@ -26,7 +26,7 @@ type KafkaClient struct {
 	prodLock sync.Mutex
 }
 
-// NewKafkaClient creates a new Kafka factory.
+// NewClient creates a new Kafka factory.
 // It validates connection by initializing a temporary client to the broker.
 //
 // Defaults applied:
@@ -38,18 +38,18 @@ type KafkaClient struct {
 //
 //	cfg := config.KafkaConfig{
 //	    Enable: true,
-//	    Host:   "pkc-xxx.us-east-1.aws.confluent.cloud:9092",
-//	    Username: "API_KEY",
-//	    Password: "API_SECRET",
+//	    Host:   "localhost:9092",
+//	    Username: "user",
+//	    Password: "password",
 //	}
-//	kafkaFactory, err := kafka.NewKafkaClient(cfg, logger)
+//	kafkaFactory, err := kafka.NewClient(cfg, logger)
 //	if err != nil {
 //	    log.Fatal(err)
 //	}
 //
 //	// Create a producer
 //	producer, _ := kafkaFactory.NewProducer()
-func NewKafkaClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*KafkaClient, error) {
+func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -99,7 +99,7 @@ func NewKafkaClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*KafkaClien
 
 	logger.Info().Str("brokers", cfg.Host).Msg("Kafka config valid and reachable")
 
-	return &KafkaClient{
+	return &Client{
 		cfg:        cfg,
 		saramaConf: conf,
 		log:        logger,
@@ -124,27 +124,27 @@ func applyDefaults(cfg config.KafkaConfig) config.KafkaConfig {
 
 // NewProducer creates a synchronous producer.
 // SyncProducer publishes messages and waits for acknowledgement (ACK).
-func (k *KafkaClient) NewProducer() (sarama.SyncProducer, error) {
+func (k *Client) NewProducer() (sarama.SyncProducer, error) {
 	return sarama.NewSyncProducer(k.brokers, k.saramaConf)
 }
 
 // NewAsyncProducer creates an asynchronous producer.
 // AsyncProducer publishes messages to a channel and does not wait for ACK immediately,
 // increasing throughput.
-func (k *KafkaClient) NewAsyncProducer() (sarama.AsyncProducer, error) {
+func (k *Client) NewAsyncProducer() (sarama.AsyncProducer, error) {
 	return sarama.NewAsyncProducer(k.brokers, k.saramaConf)
 }
 
 // NewConsumerGroup creates a consumer group.
 // It manages partition offsets and rebalancing automatically.
-func (k *KafkaClient) NewConsumerGroup(groupID string) (sarama.ConsumerGroup, error) {
+func (k *Client) NewConsumerGroup(groupID string) (sarama.ConsumerGroup, error) {
 	return sarama.NewConsumerGroup(k.brokers, groupID, k.saramaConf)
 }
 
 // Publish sends a message to the specified topic.
 // It uses an internal synchronous producer (singleton) to ensure reliability.
 // This is a shortcut for creating a NewProducer() and sending a message.
-func (k *KafkaClient) Publish(ctx context.Context, topic string, value []byte) error {
+func (k *Client) Publish(ctx context.Context, topic string, value []byte) error {
 	k.prodLock.Lock()
 	defer k.prodLock.Unlock()
 
@@ -165,7 +165,7 @@ func (k *KafkaClient) Publish(ctx context.Context, topic string, value []byte) e
 
 // Close closes the internal producer if it was initialized.
 // Note: Created factories (NewProducer, etc) must be closed individually by the caller.
-func (k *KafkaClient) Close() error {
+func (k *Client) Close() error {
 	k.prodLock.Lock()
 	defer k.prodLock.Unlock()
 
