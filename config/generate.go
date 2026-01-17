@@ -88,6 +88,40 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 		field := t.Field(i)
 		value := v.Field(i)
 
+		// Check for "default" tag
+		defaultVal := field.Tag.Get(defaultTag)
+
+		// Handle Pointers
+		if value.Kind() == reflect.Ptr {
+			if defaultVal != "" {
+				if value.IsNil() {
+					// Allocate new value
+					newValue := reflect.New(value.Type().Elem())
+					if err := setField(newValue.Elem(), defaultVal); err != nil {
+						return fmt.Errorf("failed to set pointer field %s: %w", field.Name, err)
+					}
+					value.Set(newValue)
+				}
+				// If not nil, we assume pre-seeded, so we don't overwrite with default
+				continue
+			}
+
+			// If no default tag, but it's a struct pointer, we might need to recurse
+			if value.IsNil() {
+				// If nil and no default, we generally leave it nil unless it's a struct we want to auto-init?
+				// For now, let's only recurse if it's NOT nil or if we decide to auto-init structs.
+				// Current logic: Only set defaults if tag exists or structure exists.
+			} else {
+				// Recurse if it points to a struct
+				if value.Elem().Kind() == reflect.Struct {
+					if err := SetDefaults(value.Interface(), defaultTag); err != nil {
+						return err
+					}
+				}
+			}
+			continue
+		}
+
 		// Recursively set defaults for nested structs
 		if value.Kind() == reflect.Struct {
 			if err := SetDefaults(value.Addr().Interface(), defaultTag); err != nil {
@@ -151,7 +185,6 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 			continue
 		}
 
-		defaultVal := field.Tag.Get(defaultTag)
 		if defaultVal != "" {
 			if err := setField(value, defaultVal); err != nil {
 				return fmt.Errorf("failed to set field %s: %w", field.Name, err)
