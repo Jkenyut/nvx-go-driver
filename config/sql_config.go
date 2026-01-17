@@ -7,14 +7,14 @@ import (
 
 // WithDefaults applies sensible, battle-tested defaults for pgx/v5 pool
 // All time-based values are in **seconds** to match time.Duration usage
-func (c SQLConfig) WithDefaults() SQLConfig {
+func (c *SQLConfig) WithDefaults() *SQLConfig {
 	if !c.Enable {
 		return c // disabled → no changes
 	}
 
 	// Connection basics
 	if c.Host == "" {
-		c.Host = "127.0.0.1"
+		c.Host = "0.0.0.0"
 	}
 	if c.Port == 0 {
 		c.Port = 5432

@@ -83,7 +83,7 @@ func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(c
 		logger = &nop
 	}
 
-	cfg = cfg.WithDefaults()
+	cfg = *cfg.WithDefaults()
 	if !cfg.Enable {
 		return nil, errors.New("database disabled in config")
 	}

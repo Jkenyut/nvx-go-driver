@@ -10,26 +10,26 @@ type Listener struct {
 
 type SQLConfig struct {
 	Enable   bool   `yaml:"enable" json:"enable" default:"true"`
-	Host     string `yaml:"host" json:"host"`
+	Host     string `yaml:"host" json:"host" default:"0.0.0.0"`
 	Port     int    `yaml:"port" json:"port" default:"5432"`
-	Username string `yaml:"username" json:"username"`
-	Password string `yaml:"password" json:"password"`
-	Database string `yaml:"database" json:"database"`
-	Options  string `yaml:"options" json:"options"`
+	Username string `yaml:"username" json:"username" default:"postgres"`
+	Password string `yaml:"password" json:"password" default:"postgres"`
+	Database string `yaml:"database" json:"database" default:"postgres"`
+	Options  string `yaml:"options" json:"options" default:"sslmode=disable"`
 
 	// Optional full connection string override
-	Connection string `yaml:"connection" json:"connection"`
+	Connection string `yaml:"connection" json:"connection" default:""`
 
 	// Pool settings
-	MaxConn           int `yaml:"max_conn" json:"max_conn"`                                       // 0 = auto (CPU × 8)
-	MinConn           int `yaml:"min_conn" json:"min_conn"`                                       // 0 = auto (max 4, CPU)
-	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds"`     // seconds
-	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds"`   // seconds
-	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds"` // seconds
+	MaxConn           int `yaml:"max_conn" json:"max_conn" default:"0"`                                        // 0 = auto (CPU × 8)
+	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`                                        // 0 = auto (max 4, CPU)
+	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`   // seconds
+	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`  // seconds
+	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"` // seconds
 
-	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds"` // seconds
+	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"` // seconds
 
-	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect"`
+	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
 
 	// Untuk future / extensibility
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
@@ -37,7 +37,7 @@ type SQLConfig struct {
 
 type RabbitMQConfig struct {
 	Enable              bool   `yaml:"enable" default:"false" desc:"config:rabbitmq:enable"`
-	Host                string `yaml:"host" default:"127.0.0.1" desc:"config:rabbitmq:host"`
+	Host                string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
 	Port                int    `yaml:"port" default:"5672" desc:"config:rabbitmq:port"`
 	Username            string `yaml:"username" default:"guest"  desc:"config:rabbitmq:username"`
 	Password            string `yaml:"password" default:"guest" desc:"config:rabbitmq:password"`
@@ -48,7 +48,7 @@ type RabbitMQConfig struct {
 
 type RedisConfig struct {
 	Enable        bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
-	Host          string `yaml:"host" default:"127.0.0.1" desc:"config:redis:host"`
+	Host          string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
 	Port          int    `yaml:"port" default:"6379" desc:"config:redis:port"`
 	Password      string `yaml:"password" default:"" desc:"config:redis:password"`
 	Pool          int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
@@ -65,7 +65,7 @@ type RedisConfig struct {
 
 type KafkaConfig struct {
 	Enable           bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
-	Host             string `yaml:"host" default:"127.0.0.1:9092" desc:"config:kafka:host"`
+	Host             string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
 	Registry         string `yaml:"registry" default:"" desc:"config:kafka:registry"`
 	Username         string `yaml:"username" default:""  desc:"config:kafka:username"`
 	Password         string `yaml:"password" default:"" desc:"config:kafka:password"`
