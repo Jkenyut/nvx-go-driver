@@ -128,7 +128,38 @@ We provide high-level methods to avoid accessing low-level clients for common ta
 
 ## Configuration
 
-All configurations are defined in `config/config.go`. You can load them easily using `cleanenv` or standard JSON/YAML unmarshallers.
+All configurations are defined in `config/config.go`. This library provides a smart configuration loader that can:
+1. **Auto-generate config files**: If your config file is missing, it will create one with default values.
+2. **Auto-repair**: If your config file is missing new fields, it will append them with defaults.
+
+### Secret Management
+We support a **hybrid secret strategy** (File > Env), ideal for Docker Swarm/Kubernetes Secrets with local dev fallback.
+
+```go
+// In your config struct
+Password: config.SetValueFromEnv(
+    "/run/secrets/db_password", // Priority 1: Read from file (Docker Secret)
+    "DB_PASSWORD",              // Priority 2: Read from Env (Local Dev)
+)
+```
+
+### Loading Config
+```go
+import "github.com/Jkenyut/nvx-go-driver/config"
+
+type AppConfig struct {
+    Database config.SQLConfig `yaml:"database"`
+}
+
+func main() {
+    cfg, err := config.Load[AppConfig]("config.yaml")
+    if err != nil {
+        panic(err)
+    }
+    // cfg is now populated. 
+    // If config.yaml didn't exist, it was created with defaults!
+}
+```
 
 ## Observability
 
