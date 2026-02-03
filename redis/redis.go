@@ -178,3 +178,7 @@ func (r *Client) Metrics() Metrics {
 		},
 	}
 }
+
+func (r *Client) Nil() redis.Error {
+	return redis.Nil
+}
