@@ -64,13 +64,14 @@ type RedisConfig struct {
 }
 
 type KafkaConfig struct {
-	Enable           bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
-	Host             string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
-	Registry         string `yaml:"registry" default:"" desc:"config:kafka:registry"`
-	Username         string `yaml:"username" default:""  desc:"config:kafka:username"`
-	Password         string `yaml:"password" default:"" desc:"config:kafka:password"`
-	SecurityProtocol string `yaml:"securityProtocol" default:"SASL_SSL"  desc:"config:kafka:securityProtocol"`
-	Mechanisms       string `yaml:"mechanisms" default:"PLAIN"  desc:"config:kafka:mechanisms"`
-	UseMock          bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
-	Debug            string `yaml:"debug" default:"consumer"  desc:"config:kafka:debug"`
+	Enable             bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
+	Host               string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
+	Registry           string `yaml:"registry" default:"" desc:"config:kafka:registry"`
+	Username           string `yaml:"username" default:""  desc:"config:kafka:username"`
+	Password           string `yaml:"password" default:"" desc:"config:kafka:password"`
+	SecurityProtocol   string `yaml:"securityProtocol" default:"SASL_SSL"  desc:"config:kafka:securityProtocol"`
+	Mechanisms         string `yaml:"mechanisms" default:"PLAIN"  desc:"config:kafka:mechanisms"`
+	UseMock            bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	InsecureSkipVerify bool   `yaml:"insecureSkipVerify" default:"false"  desc:"config:kafka:insecureSkipVerify"`
+	Debug              string `yaml:"debug" default:"consumer"  desc:"config:kafka:debug"`
 }

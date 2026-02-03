@@ -68,7 +68,7 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 	if cfg.SecurityProtocol == "SASL_SSL" || cfg.SecurityProtocol == "SSL" {
 		conf.Net.TLS.Enable = true
 		conf.Net.TLS.Config = &tls.Config{
-			InsecureSkipVerify: true, // Common for internal clusters
+			InsecureSkipVerify: cfg.InsecureSkipVerify, // Common for internal clusters
 		}
 	}
 

@@ -123,11 +123,17 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 
 // Client returns the underlying *redis.Client for direct usage.
 func (r *Client) Client() *redis.Client {
+	if r.client == nil {
+		return nil
+	}
 	return r.client
 }
 
 // Close gracefully closes the Redis client connection.
 func (r *Client) Close() error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
 	r.log.Info().Msg("Closing Redis client")
 	return r.client.Close()
 }
@@ -135,22 +141,34 @@ func (r *Client) Close() error {
 // Set executes a simplified Redis SET command.
 // expiration of 0 means no expiration.
 func (r *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
 
 // Get executes a simplified Redis GET command.
 // Returns redis.Nil error if key does not exist.
 func (r *Client) Get(ctx context.Context, key string) (string, error) {
+	if r.client == nil {
+		return "", errors.New("redis client is nil")
+	}
 	return r.client.Get(ctx, key).Result()
 }
 
 // Del executes a simplified Redis DEL command.
 func (r *Client) Del(ctx context.Context, key string) error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
 	return r.client.Del(ctx, key).Err()
 }
 
 // Metrics returns observability metrics for the Redis pool.
 func (r *Client) Metrics() Metrics {
+	if r.client == nil {
+		return Metrics{}
+	}
 	return Metrics{
 		HitsTotal: func() float64 {
 			stats := r.client.PoolStats()
