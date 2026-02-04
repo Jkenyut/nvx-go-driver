@@ -49,6 +49,7 @@ type RabbitMQConfig struct {
 type RedisConfig struct {
 	Enable        bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
 	Host          string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
+	Database      int    `yaml:"database" default:"0" desc:"config:redis:database"`
 	Port          int    `yaml:"port" default:"6379" desc:"config:redis:port"`
 	Password      string `yaml:"password" default:"" desc:"config:redis:password"`
 	Pool          int    `yaml:"pool" default:"10" desc:"config:redis:pool"`

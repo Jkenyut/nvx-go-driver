@@ -70,7 +70,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		Password:     cfg.Password,
-		DB:           0, // default DB
+		DB:           cfg.Database, // default DB
 		PoolSize:     cfg.PoolSize,
 		MinIdleConns: cfg.MinIdleConn,
 		MaxIdleConns: cfg.MaxIdleConn,
