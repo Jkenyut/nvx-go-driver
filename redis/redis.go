@@ -70,11 +70,11 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         addr,
 		Password:     cfg.Password,
-		DB:           cfg.Database, // default DB
+		DB:           cfg.Database,
 		PoolSize:     cfg.PoolSize,
 		MinIdleConns: cfg.MinIdleConn,
 		MaxIdleConns: cfg.MaxIdleConn,
-		DialTimeout:  time.Duration(5) * time.Second,
+		DialTimeout:  time.Duration(cfg.ConnectTimeout) * time.Second,
 		ReadTimeout:  time.Duration(cfg.PoolTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.PoolTimeout) * time.Second,
 
@@ -118,6 +118,9 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 	if cfg.PoolTimeout == 0 {
 		cfg.PoolTimeout = 30
 	}
+	if cfg.ConnectTimeout == 0 {
+		cfg.ConnectTimeout = 5
+	}
 	return cfg
 }
 
@@ -144,6 +147,7 @@ func (r *Client) Set(ctx context.Context, key string, value interface{}, expirat
 	if r.client == nil {
 		return errors.New("redis client is nil")
 	}
+	_ = r.Del(ctx, key)
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
 
