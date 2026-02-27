@@ -47,20 +47,22 @@ type RabbitMQConfig struct {
 }
 
 type RedisConfig struct {
-	Enable        bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
-	Host          string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
-	Port          int    `yaml:"port" default:"6379" desc:"config:redis:port"`
-	Password      string `yaml:"password" default:"" desc:"config:redis:password"`
-	Pool          int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
-	AutoReconnect bool   `yaml:"autoReconnect" default:"false"  desc:"config:redis:autoReconnect"`
-	StartInterval int    `yaml:"startInterval" default:"2"  desc:"config:redis:startInterval"`
-	MaxError      int    `yaml:"maxError" default:"5"  desc:"config:redis:maxError"`
-	PoolSize      int    `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
-	PoolTimeout   int    `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
-	MinIdleConn   int    `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
-	MaxIdleConn   int    `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
-	ConnMaxLife   int    `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
-	UseMock       bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	Enable         bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
+	Database       int    `yaml:"database" default:"0" desc:"config:redis:database"`
+	Host           string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
+	Port           int    `yaml:"port" default:"6379" desc:"config:redis:port"`
+	Password       string `yaml:"password" default:"" desc:"config:redis:password"`
+	Pool           int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
+	AutoReconnect  bool   `yaml:"autoReconnect" default:"false"  desc:"config:redis:autoReconnect"`
+	StartInterval  int    `yaml:"startInterval" default:"2"  desc:"config:redis:startInterval"`
+	MaxError       int    `yaml:"maxError" default:"5"  desc:"config:redis:maxError"`
+	PoolSize       int    `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
+	PoolTimeout    int    `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
+	ConnectTimeout int    `yaml:"connectTimeout" default:"5" desc:"config:redis:connectTimeout"`
+	MinIdleConn    int    `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
+	MaxIdleConn    int    `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
+	ConnMaxLife    int    `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
+	UseMock        bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
 }
 
 type KafkaConfig struct {
