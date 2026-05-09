@@ -65,10 +65,15 @@ func (p *Publisher) startConfirmListener(ch *amqp.Channel) {
 		for conf := range confirmChan {
 			if chObj, ok := p.pendingConfirms.LoadAndDelete(conf.DeliveryTag); ok {
 				resultChan := chObj.(chan error)
-				if conf.Ack {
-					resultChan <- nil
-				} else {
-					resultChan <- errors.New("message not acknowledged by broker")
+				
+				var err error
+				if !conf.Ack {
+					err = errors.New("message not acknowledged by broker")
+				}
+				
+				select {
+				case resultChan <- err:
+				default:
 				}
 			}
 		}
@@ -192,6 +197,18 @@ func (p *Publisher) reconnectLoop() {
 			p.lock.Lock()
 
 			oldCh := p.ch
+
+			// Reject all pending confirms with error because channel is recreated
+			p.pendingConfirms.Range(func(key, value any) bool {
+				resultChan := value.(chan error)
+				select {
+				case resultChan <- errors.New("publisher channel reconnected"):
+				default:
+				}
+				p.pendingConfirms.Delete(key)
+				return true
+			})
+
 			p.ch = newCh
 
 			p.lock.Unlock()
