@@ -65,12 +65,12 @@ func (p *Publisher) startConfirmListener(ch *amqp.Channel) {
 		for conf := range confirmChan {
 			if chObj, ok := p.pendingConfirms.LoadAndDelete(conf.DeliveryTag); ok {
 				resultChan := chObj.(chan error)
-				
+
 				var err error
 				if !conf.Ack {
 					err = errors.New("message not acknowledged by broker")
 				}
-				
+
 				select {
 				case resultChan <- err:
 				default:
