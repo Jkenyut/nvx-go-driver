@@ -35,8 +35,12 @@ type Consumer struct {
 
 	ch *amqp.Channel
 
-	done chan struct{}
-	wg   sync.WaitGroup
+	done      chan struct{}
+	wg        sync.WaitGroup
+	exclusive bool
+	noLocal   bool
+	noWait    bool
+	args      amqp.Table
 }
 
 func NewConsumer(
@@ -63,6 +67,30 @@ func (c *Consumer) SetAutoAck(
 	autoAck bool,
 ) {
 	c.autoAck = autoAck
+}
+
+func (c *Consumer) SetExclusive(
+	exclusive bool,
+) {
+	c.exclusive = exclusive
+}
+
+func (c *Consumer) SetNoLocal(
+	noLocal bool,
+) {
+	c.noLocal = noLocal
+}
+
+func (c *Consumer) SetNoWait(
+	noWait bool,
+) {
+	c.noWait = noWait
+}
+
+func (c *Consumer) SetArgs(
+	args amqp.Table,
+) {
+	c.args = args
 }
 
 func (c *Consumer) Start(
@@ -163,10 +191,10 @@ func (c *Consumer) consume(
 		c.queue,
 		consumerTag,
 		c.autoAck,
-		false,
-		false,
-		false,
-		nil,
+		c.exclusive,
+		c.noLocal,
+		c.noWait,
+		c.args,
 	)
 
 	if err != nil {
