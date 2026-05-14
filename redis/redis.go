@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -21,12 +22,12 @@ type Client struct {
 
 // Metrics provides Prometheus-compatible metric functions.
 type Metrics struct {
-	HitsTotal     func() float64
-	MissesTotal   func() float64
-	TimeoutsTotal func() float64
-	TotalConns    func() float64
-	IdleConns     func() float64
-	StaleConns    func() float64
+	HitsTotal     float64
+	MissesTotal   float64
+	TimeoutsTotal float64
+	TotalConns    float64
+	IdleConns     float64
+	StaleConns    float64
 }
 
 // NewClient creates a new Redis client with the provided configuration.
@@ -141,13 +142,21 @@ func (r *Client) Close() error {
 	return r.client.Close()
 }
 
+// Ping verifies the connection to Redis is alive.
+// Useful for application health check endpoints.
+func (r *Client) Ping(ctx context.Context) error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
+	return r.client.Ping(ctx).Err()
+}
+
 // Set executes a simplified Redis SET command.
 // expiration of 0 means no expiration.
 func (r *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	if r.client == nil {
 		return errors.New("redis client is nil")
 	}
-	_ = r.Del(ctx, key)
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
 
@@ -168,36 +177,73 @@ func (r *Client) Del(ctx context.Context, key string) error {
 	return r.client.Del(ctx, key).Err()
 }
 
+// Exists checks if a key exists in Redis.
+func (r *Client) Exists(ctx context.Context, key string) (bool, error) {
+	if r.client == nil {
+		return false, errors.New("redis client is nil")
+	}
+	n, err := r.client.Exists(ctx, key).Result()
+	return n > 0, err
+}
+
+// TTL gets the remaining time-to-live of a key.
+// Returns a negative duration if the key does not exist or has no expiration.
+func (r *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if r.client == nil {
+		return 0, errors.New("redis client is nil")
+	}
+	return r.client.TTL(ctx, key).Result()
+}
+
+// SetNX executes the Redis SETNX command (Set if Not eXists).
+// Returns true if the key was set, false if it already existed.
+func (r *Client) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	if r.client == nil {
+		return false, errors.New("redis client is nil")
+	}
+	return r.client.SetNX(ctx, key, value, expiration).Result()
+}
+
+// SetJSON marshals a value to JSON and stores it in Redis.
+func (r *Client) SetJSON(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
+	bytes, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("failed to marshal json for redis: %w", err)
+	}
+	return r.client.Set(ctx, key, bytes, expiration).Err()
+}
+
+// GetJSON retrieves a JSON string from Redis and unmarshals it into the dest pointer.
+func (r *Client) GetJSON(ctx context.Context, key string, dest interface{}) error {
+	if r.client == nil {
+		return errors.New("redis client is nil")
+	}
+	val, err := r.client.Get(ctx, key).Bytes()
+	if err != nil {
+		return err // Returns redis.Nil if key does not exist
+	}
+	if err := json.Unmarshal(val, dest); err != nil {
+		return fmt.Errorf("failed to unmarshal json from redis: %w", err)
+	}
+	return nil
+}
+
 // Metrics returns observability metrics for the Redis pool.
 func (r *Client) Metrics() Metrics {
 	if r.client == nil {
 		return Metrics{}
 	}
+	stats := r.client.PoolStats()
 	return Metrics{
-		HitsTotal: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.Hits)
-		},
-		MissesTotal: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.Misses)
-		},
-		TimeoutsTotal: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.Timeouts)
-		},
-		TotalConns: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.TotalConns)
-		},
-		IdleConns: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.IdleConns)
-		},
-		StaleConns: func() float64 {
-			stats := r.client.PoolStats()
-			return float64(stats.StaleConns)
-		},
+		HitsTotal:     float64(stats.Hits),
+		MissesTotal:   float64(stats.Misses),
+		TimeoutsTotal: float64(stats.Timeouts),
+		TotalConns:    float64(stats.TotalConns),
+		IdleConns:     float64(stats.IdleConns),
+		StaleConns:    float64(stats.StaleConns),
 	}
 }
 

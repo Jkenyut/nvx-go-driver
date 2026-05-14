@@ -20,18 +20,31 @@ type SQLConfig struct {
 	// Optional full connection string override
 	Connection string `yaml:"connection" json:"connection" default:""`
 
-	// Pool settings
-	MaxConn           int `yaml:"max_conn" json:"max_conn" default:"0"`                                        // 0 = auto (CPU × 8)
-	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`                                        // 0 = auto (max 4, CPU)
+	// Pool size configuration
+	// MaxConns limits total connections to prevent database overload
+	MaxConn int `yaml:"max_conn" json:"max_conn" default:"0"`
+
+	// MinConns keeps connections warm and ready
+	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`   
+	                                     // 0 
+	// MaxConnLifetime closes connections after this duration
+    // Helps distribute load across read replicas behind a load balancer
 	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`   // seconds
+
+	// MaxConnIdleTime closes idle connections to free resources
 	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`  // seconds
+
+	// HealthCheckPeriod specifies how often to check connection health
+    // Stale connections are closed and replaced
 	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"` // seconds
 
+	// ConnectTimeout sets the maximum time to wait for a connection
 	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"` // seconds
 
+	// AutoReconnect enables automatic reconnection on failure
 	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
 
-	// Untuk future / extensibility
+	// For future / extensibility
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
 }
 

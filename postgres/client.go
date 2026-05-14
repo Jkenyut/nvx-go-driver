@@ -55,8 +55,13 @@ type Client struct {
 	drain     chan struct{}
 	reconnect atomic.Int64 // reconnect counter
 
-	log          *zerolog.Logger
+	log *zerolog.Logger
+	// AfterConnect is called after a new connection is established
 	AfterConnect func(ctx context.Context, conn *pgx.Conn) error
+
+	// BeforeConnect is called before establishing a new connection
+	// Use for custom authentication or connection parameter setup
+	BeforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error
 }
 
 // Metrics provides Prometheus-compatible metric functions.
@@ -72,12 +77,15 @@ type Metrics struct {
 // NewClient creates a new Client with default hook (nil AfterConnect).
 // It applies defaults, connects to the database, and starts background monitoring.
 func NewClient(cfg config.SQLConfig, logger *zerolog.Logger) (*Client, error) {
-	return NewClientWithHook(cfg, logger, nil)
+	return NewClientWithHook(cfg, logger, nil, nil)
 }
 
 // NewClientWithHook creates a new Client with optional AfterConnect hook.
 // The hook is called for every new physical connection (useful for SET commands).
-func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(context.Context, *pgx.Conn) error) (*Client, error) {
+func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger,
+	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
+	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
+) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -89,11 +97,12 @@ func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger, hook func(c
 	}
 
 	client := &Client{
-		cfg:          cfg,
-		log:          logger,
-		AfterConnect: hook,
-		started:      time.Now(),
-		drain:        make(chan struct{}),
+		cfg:           cfg,
+		log:           logger,
+		AfterConnect:  afterConnect,
+		BeforeConnect: beforeConnect,
+		started:       time.Now(),
+		drain:         make(chan struct{}),
 	}
 
 	if err := client.connectInitial(); err != nil {
@@ -209,11 +218,97 @@ func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
 	return pool.Begin(ctx)
 }
 
+// BeginTx starts a transaction with the specified options.
+func (c *Client) BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.BeginTx(ctx, txOptions)
+}
+
+// RunInTx executes the provided function within a transaction.
+// It automatically commits if the function returns nil, and rolls back if it returns an error or panics.
+func (c *Client) RunInTx(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := c.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if p := recover(); p != nil {
+			tx.Rollback(ctx)
+			panic(p) // re-panic after rollback
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+// SendBatch sends all queued queries to the server at once.
+func (c *Client) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
+	pool := c.Pool()
+	if pool == nil {
+		return errBatchResults{errors.New("database client is closed or not initialized")}
+	}
+	return pool.SendBatch(ctx, b)
+}
+
+// CopyFrom uses the PostgreSQL copy protocol to perform bulk data insertion.
+func (c *Client) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return 0, errors.New("database client is closed or not initialized")
+	}
+	return pool.CopyFrom(ctx, tableName, columnNames, rowSrc)
+}
+
+// Acquire acquires a single connection from the pool.
+// The connection MUST be released back to the pool by calling conn.Release() when done.
+func (c *Client) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
+	pool := c.Pool()
+	if pool == nil {
+		return nil, errors.New("database client is closed or not initialized")
+	}
+	return pool.Acquire(ctx)
+}
+
+// Ping verifies a connection to the database is still alive, establishing a connection if necessary.
+func (c *Client) Ping(ctx context.Context) error {
+	pool := c.Pool()
+	if pool == nil {
+		return errors.New("database client is closed or not initialized")
+	}
+	return pool.Ping(ctx)
+}
+
+// Stat returns a pgxpool.Stat struct with a snapshot of pool statistics.
+func (c *Client) Stat() *pgxpool.Stat {
+	pool := c.Pool()
+	if pool == nil {
+		// Return empty struct if no pool to avoid nil panics for stat readers
+		return &pgxpool.Stat{}
+	}
+	return pool.Stat()
+}
+
 type errRow struct {
 	err error
 }
 
 func (e errRow) Scan(dest ...any) error { return e.err }
+
+type errBatchResults struct {
+	err error
+}
+
+func (e errBatchResults) Exec() (pgconn.CommandTag, error) { return pgconn.CommandTag{}, e.err }
+func (e errBatchResults) Query() (pgx.Rows, error)          { return nil, e.err }
+func (e errBatchResults) QueryRow() pgx.Row                 { return errRow{e.err} }
+func (e errBatchResults) Close() error                      { return e.err }
 
 func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(buildDSN(c.cfg))
@@ -228,7 +323,16 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc.MaxConnIdleTime = time.Duration(c.cfg.MaxConnIdleTime) * time.Second
 	pc.HealthCheckPeriod = time.Duration(c.cfg.HealthCheckPeriod) * time.Second
 	pc.ConnConfig.ConnectTimeout = time.Duration(c.cfg.ConnectTimeout) * time.Second
-	pc.ConnConfig.RuntimeParams = map[string]string{"application_name": "nvx-go-driver"}
+	if pc.ConnConfig.RuntimeParams == nil {
+		pc.ConnConfig.RuntimeParams = make(map[string]string)
+	}
+	if _, ok := pc.ConnConfig.RuntimeParams["application_name"]; !ok {
+		pc.ConnConfig.RuntimeParams["application_name"] = "nvx-go-driver"
+	}
+
+	if c.BeforeConnect != nil {
+		pc.BeforeConnect = c.BeforeConnect
+	}
 
 	if c.AfterConnect != nil {
 		pc.AfterConnect = c.AfterConnect
@@ -236,10 +340,7 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 
 	// Simple validation: reject closed connections (fast, no extra ping)
 	pc.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
-		if conn == nil || conn.IsClosed() {
-			return false, nil
-		}
-		return true, nil
+		return !conn.IsClosed(), nil
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
@@ -274,10 +375,6 @@ func (c *Client) Close() error {
 		return nil
 	}
 
-	// Encourage quick return of connections
-	pool.Config().MaxConnLifetime = 3 * time.Second
-	pool.Config().MaxConnIdleTime = 2 * time.Second
-
 	timeout := time.After(30 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -285,8 +382,9 @@ func (c *Client) Close() error {
 	for {
 		select {
 		case <-timeout:
-			c.log.Warn().Msg("Shutdown timeout — forcing close")
-			pool.Close()
+			c.log.Warn().Msg("Shutdown timeout — abandoning pool (connections may leak)")
+			// Run in a goroutine to prevent Client.Close() from blocking forever
+			go pool.Close()
 			return nil
 		case <-ticker.C:
 			stat := pool.Stat()
