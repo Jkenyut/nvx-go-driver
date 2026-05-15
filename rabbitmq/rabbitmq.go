@@ -1,10 +1,10 @@
 package rabbitmq
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
@@ -12,54 +12,35 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Client handles connection to RabbitMQ with auto-reconnect,
-// thread-safe channel access, and graceful shutdown.
 type Client struct {
-	cfg  config.RabbitMQConfig
-	log  *zerolog.Logger
+	cfg config.RabbitMQConfig
+	log *zerolog.Logger
+
 	lock sync.RWMutex
 
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	closed  bool
-	done    chan struct{}
+	conn *amqp.Connection
+
+	closed atomic.Bool
+	ready  atomic.Bool
+
+	done chan struct{}
+	wg   sync.WaitGroup
 }
 
-// NewClient creates a new RabbitMQ client and starts the reconnect monitor.
-// It applies sensible defaults for missing configuration values.
-//
-// Defaults applied:
-//   - Host: "127.0.0.1" (if empty)
-//   - Port: 5672 (if 0)
-//   - Username: "guest" (if empty)
-//   - Password: "guest" (if empty)
-//   - ReconnectDuration: 5s (if 0)
-//
-// Usage Example:
-//
-//	cfg := config.RabbitMQConfig{
-//	    Enable: true,
-//	    Host:   "localhost",
-//	}
-//	mq, err := rabbitmq.NewClient(cfg, logger)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	defer mq.Close()
-//
-//	// Get a channel to publish/consume
-//	ch, err := mq.Channel()
-//	if err == nil {
-//	    ch.Publish(...)
-//	}
-func NewClient(cfg config.RabbitMQConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(
+	cfg config.RabbitMQConfig,
+	logger *zerolog.Logger,
+) (*Client, error) {
+
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
 	}
 
 	if !cfg.Enable {
-		return nil, errors.New("rabbitmq disabled in config")
+		return nil, errors.New(
+			"rabbitmq disabled in config",
+		)
 	}
 
 	cfg = applyDefaults(cfg)
@@ -70,65 +51,100 @@ func NewClient(cfg config.RabbitMQConfig, logger *zerolog.Logger) (*Client, erro
 		done: make(chan struct{}),
 	}
 
-	if err := client.connect(); err != nil {
+	err := client.connect()
+	if err != nil {
 		return nil, err
 	}
 
-	go client.reconnectLoop()
+	client.wg.Add(1)
+
+	go func() {
+		defer client.wg.Done()
+		client.reconnectLoop()
+	}()
 
 	return client, nil
 }
 
-func applyDefaults(cfg config.RabbitMQConfig) config.RabbitMQConfig {
+func applyDefaults(
+	cfg config.RabbitMQConfig,
+) config.RabbitMQConfig {
+
 	if cfg.Host == "" {
 		cfg.Host = "127.0.0.1"
 	}
+
 	if cfg.Port == 0 {
 		cfg.Port = 5672
 	}
+
 	if cfg.Username == "" {
 		cfg.Username = "guest"
 	}
+
 	if cfg.Password == "" {
 		cfg.Password = "guest"
 	}
+
 	if cfg.ReconnectDuration == 0 {
 		cfg.ReconnectDuration = 5
 	}
+
 	return cfg
 }
 
 func (r *Client) connect() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
 
-	dsn := fmt.Sprintf("amqp://%s:%s@%s:%d/",
+	dsn := fmt.Sprintf(
+		"amqp://%s:%s@%s:%d/",
 		r.cfg.Username,
 		r.cfg.Password,
 		r.cfg.Host,
 		r.cfg.Port,
 	)
 
-	conn, err := amqp.Dial(dsn)
+	conn, err := amqp.DialConfig(
+		dsn,
+		amqp.Config{
+			Heartbeat: 10 * time.Second,
+			Locale:    "en_US",
+		},
+	)
+
 	if err != nil {
-		return fmt.Errorf("dial: %w", err)
+		r.ready.Store(false)
+
+		return fmt.Errorf(
+			"dial rabbitmq: %w",
+			err,
+		)
 	}
 
-	ch, err := conn.Channel()
-	if err != nil {
-		conn.Close()
-		return fmt.Errorf("channel: %w", err)
-	}
+	r.lock.Lock()
 
+	oldConn := r.conn
 	r.conn = conn
-	r.channel = ch
-	r.log.Info().Str("host", r.cfg.Host).Msg("RabbitMQ connected")
+
+	r.lock.Unlock()
+
+	if oldConn != nil && !oldConn.IsClosed() {
+		_ = oldConn.Close()
+	}
+
+	r.ready.Store(true)
+
+	r.log.Info().
+		Str("host", r.cfg.Host).
+		Int("port", r.cfg.Port).
+		Msg("RabbitMQ connected")
 
 	return nil
 }
 
 func (r *Client) reconnectLoop() {
+	backoff := time.Second
 	for {
+
 		select {
 		case <-r.done:
 			return
@@ -140,94 +156,211 @@ func (r *Client) reconnectLoop() {
 		r.lock.RUnlock()
 
 		if conn == nil {
-			time.Sleep(time.Duration(r.cfg.ReconnectDuration) * time.Second)
+
+			select {
+			case <-r.done:
+				return
+			case <-time.After(backoff):
+			}
+
 			continue
 		}
 
-		reason, ok := <-conn.NotifyClose(make(chan *amqp.Error))
-		if !ok {
-			// Normal closure (triggered by Close()) or channel closed
-			// If r.closed is true, we exit naturally
-			if r.isClosed() {
-				return
-			}
-		} else {
-			r.log.Warn().Err(reason).Msg("RabbitMQ connection lost, reconnecting...")
+		closeChan := conn.NotifyClose(
+			make(chan *amqp.Error, 1),
+		)
+
+		err, ok := <-closeChan
+
+		select {
+		case <-r.done:
+			return
+		default:
 		}
 
-		for {
-			if r.isClosed() {
+		// connection already replaced
+		r.lock.RLock()
+		currentConn := r.conn
+		r.lock.RUnlock()
+
+		if currentConn != conn {
+			continue
+		}
+
+		// graceful close
+		if !ok || err == nil {
+
+			if r.closed.Load() {
 				return
 			}
 
-			time.Sleep(time.Duration(r.cfg.ReconnectDuration) * time.Second)
+			select {
+			case <-r.done:
+				return
+			case <-time.After(backoff):
+			}
 
-			if err := r.connect(); err == nil {
-				r.log.Info().Msg("RabbitMQ reconnected")
+			continue
+		}
+
+		r.ready.Store(false)
+
+		r.log.Warn().
+			Err(err).
+			Msg("RabbitMQ connection lost")
+
+		for {
+
+			select {
+			case <-r.done:
+				return
+			default:
+			}
+
+			errs := r.connect()
+			if errs == nil {
+
+				backoff = time.Second
+
+				r.log.Info().
+					Msg("RabbitMQ reconnected")
+
 				break
-			} else {
-				r.log.Error().Err(err).Msg("Failed to reconnect RabbitMQ, retrying...")
+			}
+
+			r.log.Error().
+				Err(errs).
+				Msg("RabbitMQ reconnect failed")
+
+			select {
+			case <-r.done:
+				return
+			case <-time.After(backoff):
+			}
+
+			if backoff < 30*time.Second {
+				backoff *= 2
 			}
 		}
 	}
 }
 
-func (r *Client) isClosed() bool {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	return r.closed
+func (r *Client) IsReady() bool {
+	return r.ready.Load()
 }
 
-// Publish sends a message to the specified exchange with the given routing key.
-// It automatically retrieves a channel and acts as a fire-and-forget helper.
-// For critical data, consider using Channel() directly and handling Confirmations.
-func (r *Client) Publish(ctx context.Context, exchange, routingKey string, body []byte) error {
-	ch, err := r.Channel()
+func (r *Client) Connection() (*amqp.Connection, error) {
+
+	r.lock.RLock()
+
+	conn := r.conn
+
+	r.lock.RUnlock()
+
+	if conn == nil || conn.IsClosed() {
+		return nil, errors.New(
+			"rabbitmq connection unavailable",
+		)
+	}
+
+	return conn, nil
+}
+
+func (r *Client) NewChannel() (*amqp.Channel, error) {
+
+	conn, err := r.Connection()
+	if err != nil {
+		return nil, err
+	}
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"create rabbitmq channel: %w",
+			err,
+		)
+	}
+
+	return ch, nil
+}
+
+func (r *Client) Ping() error {
+
+	ch, err := r.NewChannel()
 	if err != nil {
 		return err
 	}
 
-	return ch.PublishWithContext(ctx,
-		exchange,   // exchange
-		routingKey, // routing key
-		false,      // mandatory
-		false,      // immediate
-		amqp.Publishing{
-			ContentType: "text/plain",
-			Body:        body,
-		})
+	defer func() {
+		if !ch.IsClosed() {
+			_ = ch.Close()
+		}
+	}()
+
+	return nil
 }
 
-// Channel returns the current active channel safely.
-// Note: You must handle the error if the channel is currently disconnected.
-// The returned channel is thread-safe for most operations, but standard AMQP
-// protocol rules apply (don't share channels across threads for publishing if execution order matters significantly,
-// though standard usage is often fine).
-func (r *Client) Channel() (*amqp.Channel, error) {
-	r.lock.RLock()
-	defer r.lock.RUnlock()
-	if r.channel == nil || r.channel.IsClosed() {
-		return nil, errors.New("rabbitmq channel is closed or reconnecting")
-	}
-	return r.channel, nil
-}
-
-// Close gracefully shuts down the client and the reconnect monitor.
 func (r *Client) Close() error {
-	r.lock.Lock()
-	defer r.lock.Unlock()
 
-	if r.closed {
+	if r.closed.Load() {
 		return nil
 	}
-	r.closed = true
-	close(r.done)
 
-	if r.channel != nil {
-		r.channel.Close()
+	r.closed.Store(true)
+
+	select {
+	case <-r.done:
+	default:
+		close(r.done)
 	}
-	if r.conn != nil {
-		return r.conn.Close()
+
+	r.lock.Lock()
+
+	conn := r.conn
+	r.conn = nil
+
+	r.lock.Unlock()
+
+	if conn != nil && !conn.IsClosed() {
+		_ = conn.Close()
 	}
+
+	r.wg.Wait()
+
+	r.ready.Store(false)
+
 	return nil
+}
+
+// DeclareExchange creates an exchange on the RabbitMQ server.
+func (r *Client) DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	return ch.ExchangeDeclare(name, kind, durable, autoDelete, internal, noWait, args)
+}
+
+// DeclareQueue creates a queue on the RabbitMQ server.
+func (r *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error) {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return amqp.Queue{}, err
+	}
+	defer ch.Close()
+
+	return ch.QueueDeclare(name, durable, autoDelete, exclusive, noWait, args)
+}
+
+// BindQueue binds a queue to an exchange with a routing key.
+func (r *Client) BindQueue(queue, routingKey, exchange string, noWait bool, args amqp.Table) error {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	return ch.QueueBind(queue, routingKey, exchange, noWait, args)
 }

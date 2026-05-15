@@ -20,18 +20,31 @@ type SQLConfig struct {
 	// Optional full connection string override
 	Connection string `yaml:"connection" json:"connection" default:""`
 
-	// Pool settings
-	MaxConn           int `yaml:"max_conn" json:"max_conn" default:"0"`                                        // 0 = auto (CPU × 8)
-	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`                                        // 0 = auto (max 4, CPU)
+	// Pool size configuration
+	// MaxConns limits total connections to prevent database overload
+	MaxConn int `yaml:"max_conn" json:"max_conn" default:"0"`
+
+	// MinConns keeps connections warm and ready
+	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`   
+	                                     // 0 
+	// MaxConnLifetime closes connections after this duration
+    // Helps distribute load across read replicas behind a load balancer
 	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`   // seconds
+
+	// MaxConnIdleTime closes idle connections to free resources
 	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`  // seconds
+
+	// HealthCheckPeriod specifies how often to check connection health
+    // Stale connections are closed and replaced
 	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"` // seconds
 
+	// ConnectTimeout sets the maximum time to wait for a connection
 	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"` // seconds
 
+	// AutoReconnect enables automatic reconnection on failure
 	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
 
-	// Untuk future / extensibility
+	// For future / extensibility
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
 }
 
@@ -47,30 +60,33 @@ type RabbitMQConfig struct {
 }
 
 type RedisConfig struct {
-	Enable        bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
-	Host          string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
-	Port          int    `yaml:"port" default:"6379" desc:"config:redis:port"`
-	Password      string `yaml:"password" default:"" desc:"config:redis:password"`
-	Pool          int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
-	AutoReconnect bool   `yaml:"autoReconnect" default:"false"  desc:"config:redis:autoReconnect"`
-	StartInterval int    `yaml:"startInterval" default:"2"  desc:"config:redis:startInterval"`
-	MaxError      int    `yaml:"maxError" default:"5"  desc:"config:redis:maxError"`
-	PoolSize      int    `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
-	PoolTimeout   int    `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
-	MinIdleConn   int    `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
-	MaxIdleConn   int    `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
-	ConnMaxLife   int    `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
-	UseMock       bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	Enable         bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
+	Database       int    `yaml:"database" default:"0" desc:"config:redis:database"`
+	Host           string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
+	Port           int    `yaml:"port" default:"6379" desc:"config:redis:port"`
+	Password       string `yaml:"password" default:"" desc:"config:redis:password"`
+	Pool           int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
+	AutoReconnect  bool   `yaml:"autoReconnect" default:"false"  desc:"config:redis:autoReconnect"`
+	StartInterval  int    `yaml:"startInterval" default:"2"  desc:"config:redis:startInterval"`
+	MaxError       int    `yaml:"maxError" default:"5"  desc:"config:redis:maxError"`
+	PoolSize       int    `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
+	PoolTimeout    int    `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
+	ConnectTimeout int    `yaml:"connectTimeout" default:"5" desc:"config:redis:connectTimeout"`
+	MinIdleConn    int    `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
+	MaxIdleConn    int    `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
+	ConnMaxLife    int    `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
+	UseMock        bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
 }
 
 type KafkaConfig struct {
-	Enable           bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
-	Host             string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
-	Registry         string `yaml:"registry" default:"" desc:"config:kafka:registry"`
-	Username         string `yaml:"username" default:""  desc:"config:kafka:username"`
-	Password         string `yaml:"password" default:"" desc:"config:kafka:password"`
-	SecurityProtocol string `yaml:"securityProtocol" default:"SASL_SSL"  desc:"config:kafka:securityProtocol"`
-	Mechanisms       string `yaml:"mechanisms" default:"PLAIN"  desc:"config:kafka:mechanisms"`
-	UseMock          bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
-	Debug            string `yaml:"debug" default:"consumer"  desc:"config:kafka:debug"`
+	Enable             bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
+	Host               string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
+	Registry           string `yaml:"registry" default:"" desc:"config:kafka:registry"`
+	Username           string `yaml:"username" default:""  desc:"config:kafka:username"`
+	Password           string `yaml:"password" default:"" desc:"config:kafka:password"`
+	SecurityProtocol   string `yaml:"securityProtocol" default:"SASL_SSL"  desc:"config:kafka:securityProtocol"`
+	Mechanisms         string `yaml:"mechanisms" default:"PLAIN"  desc:"config:kafka:mechanisms"`
+	UseMock            bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+	InsecureSkipVerify bool   `yaml:"insecureSkipVerify" default:"false"  desc:"config:kafka:insecureSkipVerify"`
+	Debug              string `yaml:"debug" default:"consumer"  desc:"config:kafka:debug"`
 }

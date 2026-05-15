@@ -79,6 +79,7 @@ func InitFromConfig(cfg config.Listener) {
 	log := zerolog.New(writer).
 		With().
 		Timestamp().
+		Caller().
 		Str("service", cfg.ServiceName()).
 		Str("env", env).
 		Int("port", cfg.Port).
@@ -101,22 +102,20 @@ func L() *zerolog.Logger {
 // Convenience global functions for common log levels.
 // These use the global logger and are safe to call from any package.
 
-var (
-	// Debug creates a debug-level log event.
-	Debug = func() *zerolog.Event { return L().Debug() }
+// Debug creates a debug-level log event.
+func Debug() *zerolog.Event { return L().Debug() }
 
-	// Info creates an info-level log event.
-	Info = func() *zerolog.Event { return L().Info() }
+// Info creates an info-level log event.
+func Info() *zerolog.Event { return L().Info() }
 
-	// Warn creates a warning-level log event.
-	Warn = func() *zerolog.Event { return L().Warn() }
+// Warn creates a warning-level log event.
+func Warn() *zerolog.Event { return L().Warn() }
 
-	// Error creates an error-level log event.
-	Error = func() *zerolog.Event { return L().Error() }
+// Error creates an error-level log event.
+func Error() *zerolog.Event { return L().Error() }
 
-	// Fatal creates a fatal-level log event (logs and calls os.Exit(1)).
-	Fatal = func() *zerolog.Event { return L().Fatal() }
+// Fatal creates a fatal-level log event (logs and calls os.Exit(1)).
+func Fatal() *zerolog.Event { return L().Fatal() }
 
-	// Panic creates a panic-level log event (logs and panics).
-	Panic = func() *zerolog.Event { return L().Panic() }
-)
+// Panic creates a panic-level log event (logs and panics).
+func Panic() *zerolog.Event { return L().Panic() }

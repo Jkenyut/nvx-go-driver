@@ -6,6 +6,7 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -235,4 +236,20 @@ func setField(value reflect.Value, defaultVal string) error {
 		// Add other types as needed
 	}
 	return nil
+}
+
+// SetValueFromEnv attempts to read a secret from a file path first.
+// If the file cannot be read (e.g., does not exist), it falls back to the specified environment variable.
+// The file content is trimmed of leading/trailing whitespace using strings.TrimSpace.
+// This supports the Docker Secret pattern (file-based) with a dev-friendly environment variable fallback.
+func SetValueFromEnv(pathSecret, env string, fallback string) string {
+	data, err := os.ReadFile(pathSecret)
+	if err != nil {
+		if os.Getenv(env) != "" {
+			return os.Getenv(env)
+		}
+		return fallback
+	}
+
+	return strings.TrimSpace(string(data))
 }
