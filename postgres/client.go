@@ -57,11 +57,11 @@ type Client struct {
 
 	log *zerolog.Logger
 	// AfterConnect is called after a new connection is established
-	AfterConnect func(ctx context.Context, conn *pgx.Conn) error
+	afterConnect func(ctx context.Context, conn *pgx.Conn) error
 
 	// BeforeConnect is called before establishing a new connection
 	// Use for custom authentication or connection parameter setup
-	BeforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error
+	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error
 }
 
 // Metrics provides Prometheus-compatible metric functions.
@@ -99,8 +99,8 @@ func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger,
 	client := &Client{
 		cfg:           cfg,
 		log:           logger,
-		AfterConnect:  afterConnect,
-		BeforeConnect: beforeConnect,
+		afterConnect:  afterConnect,
+		beforeConnect: beforeConnect,
 		started:       time.Now(),
 		drain:         make(chan struct{}),
 	}
@@ -330,12 +330,12 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 		pc.ConnConfig.RuntimeParams["application_name"] = "nvx-go-driver"
 	}
 
-	if c.BeforeConnect != nil {
-		pc.BeforeConnect = c.BeforeConnect
+	if c.beforeConnect != nil {
+		pc.BeforeConnect = c.beforeConnect
 	}
 
-	if c.AfterConnect != nil {
-		pc.AfterConnect = c.AfterConnect
+	if c.afterConnect != nil {
+		pc.AfterConnect = c.afterConnect
 	}
 
 	// Simple validation: reject closed connections (fast, no extra ping)

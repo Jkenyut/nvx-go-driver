@@ -35,6 +35,9 @@ type Consumer struct {
 
 	ch *amqp.Channel
 
+	consumerTag string
+	activeMsgs  sync.WaitGroup
+
 	done      chan struct{}
 	wg        sync.WaitGroup
 	exclusive bool
@@ -164,6 +167,7 @@ func (c *Consumer) consume(
 
 		c.lock.Lock()
 		c.ch = nil
+		// Do not clear consumerTag here, as Close() needs it, or just leave it.
 		c.lock.Unlock()
 
 		if !ch.IsClosed() {
@@ -186,6 +190,10 @@ func (c *Consumer) consume(
 		c.queue,
 		time.Now().UnixNano(),
 	)
+
+	c.lock.Lock()
+	c.consumerTag = consumerTag
+	c.lock.Unlock()
 
 	msgs, err := ch.Consume(
 		c.queue,
@@ -223,7 +231,9 @@ func (c *Consumer) consume(
 				)
 			}
 
+			c.activeMsgs.Add(1)
 			func() {
+				defer c.activeMsgs.Done()
 
 				defer func() {
 
@@ -282,12 +292,27 @@ func (c *Consumer) Close() {
 	}
 
 	c.lock.RLock()
-
 	ch := c.ch
-
+	tag := c.consumerTag
 	c.lock.RUnlock()
 
 	if ch != nil && !ch.IsClosed() {
+		_ = ch.Cancel(tag, false)
+
+		doneWait := make(chan struct{})
+		go func() {
+			c.activeMsgs.Wait()
+			close(doneWait)
+		}()
+
+		select {
+		case <-doneWait:
+		case <-time.After(10 * time.Second):
+			if c.client != nil && c.client.log != nil {
+				c.client.log.Warn().Str("queue", c.queue).Msg("Consumer graceful shutdown timeout, forcing channel close")
+			}
+		}
+
 		_ = ch.Close()
 	}
 

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -18,6 +19,8 @@ type Publisher struct {
 
 	publishLock     sync.Mutex
 	pendingConfirms sync.Map
+
+	maxAttempts int
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -39,9 +42,10 @@ func NewPublisher(
 	}
 
 	p := &Publisher{
-		client: client,
-		ch:     ch,
-		done:   make(chan struct{}),
+		client:      client,
+		ch:          ch,
+		done:        make(chan struct{}),
+		maxAttempts: 3,
 	}
 
 	p.startConfirmListener(ch)
@@ -54,6 +58,18 @@ func NewPublisher(
 	}()
 
 	return p, nil
+}
+
+// SetMaxAttempts configures the maximum number of attempts the publisher will make
+// to send a message and wait for a confirm. Set to 1 for at-most-once delivery (no retries).
+// Default is 3 for at-least-once delivery.
+func (p *Publisher) SetMaxAttempts(attempts int) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if attempts < 1 {
+		attempts = 1
+	}
+	p.maxAttempts = attempts
 }
 
 func (p *Publisher) startConfirmListener(ch *amqp.Channel) {
@@ -257,7 +273,18 @@ func (p *Publisher) Publish(
 
 	var lastErr error
 
-	for i := 0; i < 3; i++ {
+	if msg.MessageId == "" {
+		msg.MessageId = uuid.NewString()
+	}
+	if msg.Timestamp.IsZero() {
+		msg.Timestamp = time.Now().UTC()
+	}
+
+	p.lock.RLock()
+	attempts := p.maxAttempts
+	p.lock.RUnlock()
+
+	for i := 0; i < attempts; i++ {
 
 		p.publishLock.Lock()
 

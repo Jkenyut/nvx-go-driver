@@ -8,9 +8,10 @@
 ## Features
 
 - **Standardized API**: Consistent `NewClient(config, logger)` pattern across all drivers.
-- **Resilience**: Auto-reconnect logic customized for each protocol (PGX Pool, RabbitMQ Reconnect Loop, etc.).
+- **Resilience**: Auto-reconnect logic customized for each protocol (PGX Pool, RabbitMQ Reconnect Loop, Kafka Dialer, etc.).
+- **Graceful Shutdown**: Built-in context handling and connection draining to prevent message loss.
 - **Observability**: Built-in Prometheus-compatible metrics.
-- **Structured Logging**: Integrated with `zerolog`.
+- **Structured Logging**: Integrated with `zerolog` featuring auto-caller and standard log hijacking.
 - **Smart Defaults**: Minimal configuration needed (e.g., just `Enable: true` works for localhost).
 
 ## Installation
@@ -19,129 +20,117 @@
 go get github.com/Jkenyut/nvx-go-driver
 ```
 
-## Quick Start (PostgreSQL)
+## Usage Examples
+
+### 1. Logger (Zerolog)
+
+The logger automatically adapts to JSON in production and colored output in development. Standard Go logs are automatically hijacked into Zerolog!
 
 ```go
-package main
+import "github.com/Jkenyut/nvx-go-driver/logger"
+// ...
+logger.InitFromConfig(cfg.Listener)
 
-import (
-	"context"
-	"os"
+// Use convenience methods anywhere in your app:
+logger.Info().Msg("Application started")
+logger.Error().Err(err).Msg("Something failed") // Includes file & line number automatically!
+```
 
-	"github.com/Jkenyut/nvx-go-driver/config"
-	"github.com/Jkenyut/nvx-go-driver/postgres"
-	"github.com/rs/zerolog"
-)
+### 2. PostgreSQL (Zero-Downtime)
 
-func main() {
-	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
+Backed by `pgx/v5`. Supports graceful pool swapping on failure and transaction wrappers.
 
-	cfg := config.SQLConfig{
-		Enable:   true,
-		Host:     "localhost",
-		Username: "postgres",
-		Password: "password",
-		Database: "mydb",
-	}
+```go
+import "github.com/Jkenyut/nvx-go-driver/postgres"
 
-	dbClient, err := postgres.NewClient(cfg, &logger)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to connect")
-	}
-	defer dbClient.Close()
-    // Use dbClient.Pool() ...
+dbClient, err := postgres.NewClient(cfg.WithDefaults(), logger.L())
+defer dbClient.Close()
+
+// Simple query
+rows, _ := dbClient.Query(ctx, "SELECT id FROM users")
+
+// Safe Transaction Wrapper (auto rollback on panic/error)
+err = dbClient.RunInTx(ctx, func(tx pgx.Tx) error {
+    _, err := tx.Exec(ctx, "UPDATE users SET status = 'active'")
+    return err
+})
+```
+
+### 3. RabbitMQ (At-Least-Once Delivery)
+
+Backed by `amqp091-go` with **infinite auto-reconnect**, topology helpers, and idempotency aids.
+
+```go
+import "github.com/Jkenyut/nvx-go-driver/rabbitmq"
+
+mq, err := rabbitmq.NewClient(cfg, logger.L())
+
+// Topology Setup Helper
+mq.DeclareExchange("my_exchange", "direct", true, false, false, false, nil)
+mq.DeclareQueue("my_queue", true, false, false, false, nil)
+mq.BindQueue("my_queue", "my_routing_key", "my_exchange", false, nil)
+
+// Publisher (Auto-injects MessageId & Timestamp for Idempotency)
+pub, _ := rabbitmq.NewPublisher(mq)
+pub.SetMaxAttempts(3) // 3 = At-Least-Once, 1 = At-Most-Once
+msg := amqp091.Publishing{Body: []byte("hello")}
+err = pub.Publish(ctx, "my_exchange", "my_routing_key", msg, false, false)
+
+// Consumer (Graceful Shutdown ready)
+consumer := rabbitmq.NewConsumer(mq, "my_queue")
+consumer.Start(ctx, func(ctx context.Context, msg amqp091.Delivery) rabbitmq.Action {
+    fmt.Println(string(msg.Body))
+    return rabbitmq.ActionAck // Automatically acks the message
+})
+defer consumer.Close() // Waits up to 10s for active messages to finish before disconnecting!
+```
+
+### 4. Kafka (Segmentio)
+
+Backed by `segmentio/kafka-go`. A highly modern, pure-go driver with native SASL/TLS support.
+
+```go
+import "github.com/Jkenyut/nvx-go-driver/kafka"
+
+kafkaClient, err := kafka.NewClient(cfg, logger.L())
+
+// Shortcut: Simple Publish (Synchronous with Partition Key)
+err = kafkaClient.Publish(ctx, "my-topic", []byte("user_123"), []byte("payload data"))
+
+// Consumer (Reader)
+reader := kafkaClient.NewReader("my-topic", "my-consumer-group")
+defer reader.Close()
+
+for {
+    msg, err := reader.ReadMessage(ctx)
+    if err != nil {
+        break // Context cancelled or connection dropped
+    }
+    fmt.Printf("Received: %s\n", string(msg.Value))
 }
 ```
 
-## Supported Drivers
-
-### 1. Redis
+### 5. Redis
 
 Backed by `go-redis/v9`.
 
 ```go
 import "github.com/Jkenyut/nvx-go-driver/redis"
 
-cfg := config.RedisConfig{
-    Enable: true,
-    Host:   "localhost",
-    // Port defaults to 6379
-}
-// Shortcut methods (Simple Set/Get)
-err := client.Set(ctx, "key", "value", 0)
-val, err := client.Get(ctx, "key")
+redisClient, err := redis.NewClient(cfg, logger.L())
+defer redisClient.Close()
 
+// Shortcut methods for quick JSON serialization
+err = redisClient.SetJSON(ctx, "user:1", userStruct, time.Hour)
+var user User
+err = redisClient.GetJSON(ctx, "user:1", &user)
 ```
-
-| Config | Default | Description |
-| :--- | :--- | :--- |
-| `PoolSize` | `10` | Max connections in pool |
-| `MinIdleConn` | `5` | Min idle connections |
-
-### 2. RabbitMQ
-
-Backed by `amqp091-go` with **infinite auto-reconnect loop**.
-
-```go
-import "github.com/Jkenyut/nvx-go-driver/rabbitmq"
-
-cfg := config.RabbitMQConfig{
-    Enable: true,
-    Host:   "localhost",
-    // Auto-reconnects every 5s if lost
-}
-mq, err := rabbitmq.NewClient(cfg, logger)
-
-// Shortcut: Fire-and-forget publish
-err := mq.Publish(ctx, "amq.topic", "routing.key", []byte("hello"))
-
-// Or use raw channel for advanced usage
-ch, err := mq.Channel()
-```
-
-### 3. Kafka
-
-Backed by `IBM/sarama`. Supports PLAIN and SASL/SSL.
-
-```go
-import "github.com/Jkenyut/nvx-go-driver/kafka"
-// ...
-kafkaFactory, err := kafka.NewClient(cfg, logger)
-
-// Shortcut: Simple Publish
-err := kafkaFactory.Publish(ctx, "my-topic", []byte("message"))
-
-// Advanced: Custom Producer/Consumer
-producer, _ := kafkaFactory.NewAsyncProducer()
-```
-
-## Shortcuts Overview
-
-We provide high-level methods to avoid accessing low-level clients for common tasks:
-
-| Driver | Shortcut Methods |
-| :--- | :--- |
-| **Database** | `Exec`, `Query`, `QueryRow`, `Begin` |
-| **Redis** | `Set`, `Get`, `Del` |
-| **RabbitMQ** | `Publish` |
-| **Kafka** | `Publish` |
 
 ## Configuration
 
 All configurations are defined in `config/config.go`. This library provides a smart configuration loader that can:
 1. **Auto-generate config files**: If your config file is missing, it will create one with default values.
 2. **Auto-repair**: If your config file is missing new fields, it will append them with defaults.
-
-### Secret Management
-We support a **hybrid secret strategy** (File > Env), ideal for Docker Swarm/Kubernetes Secrets with local dev fallback.
-
-```go
-// In your config struct
-Password: config.SetValueFromEnv(
-    "/run/secrets/db_password", // Priority 1: Read from file (Docker Secret)
-    "DB_PASSWORD",              // Priority 2: Read from Env (Local Dev)
-)
-```
 
 ### Loading Config
 ```go
@@ -166,7 +155,6 @@ func main() {
 All clients expose a `Metrics()` method returning structs suitable for Prometheus collectors.
 
 ```go
-// Example: RabbitMQ does not expose pool metrics, but Redis and PGX do.
 redisMetrics := redisClient.Metrics()
 pgxMetrics := dbClient.Metrics()
 ```

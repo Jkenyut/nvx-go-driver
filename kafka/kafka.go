@@ -8,47 +8,33 @@ import (
 	"sync"
 	"time"
 
-	"github.com/IBM/sarama"
 	"github.com/Jkenyut/nvx-go-driver/config"
 	"github.com/rs/zerolog"
+	"github.com/segmentio/kafka-go"
+	"github.com/segmentio/kafka-go/sasl"
+	"github.com/segmentio/kafka-go/sasl/plain"
 )
 
-// Client acts as a factory for creating Producers and Consumers
+// Client acts as a factory for creating Producers (Writers) and Consumers (Readers)
 // with consistent configuration and logging.
 type Client struct {
-	cfg        config.KafkaConfig
-	saramaConf *sarama.Config
-	log        *zerolog.Logger
-	brokers    []string
+	cfg     config.KafkaConfig
+	dialer  *kafka.Dialer
+	log     *zerolog.Logger
+	brokers []string
 
 	// Internal singleton producer for shortcuts
-	producer sarama.SyncProducer
-	prodLock sync.Mutex
+	writer     *kafka.Writer
+	writerLock sync.Mutex
 }
 
-// NewClient creates a new Kafka factory.
-// It validates connection by initializing a temporary client to the broker.
+// NewClient creates a new Kafka factory based on segmentio/kafka-go.
+// It validates connection by dialing the first broker.
 //
 // Defaults applied:
 //   - Host: "127.0.0.1:9092" (if empty)
 //   - SecurityProtocol: "SASL_SSL" (if username set but protocol empty)
 //   - Mechanism: "PLAIN"
-//
-// Usage Example:
-//
-//	cfg := config.KafkaConfig{
-//	    Enable: true,
-//	    Host:   "localhost:9092",
-//	    Username: "user",
-//	    Password: "password",
-//	}
-//	kafkaFactory, err := kafka.NewClient(cfg, logger)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//
-//	// Create a producer
-//	producer, _ := kafkaFactory.NewProducer()
 func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
@@ -61,49 +47,44 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 
 	cfg = applyDefaults(cfg)
 
-	conf := sarama.NewConfig()
-	conf.Version = sarama.V2_8_0_0 // Safe default
-
-	// Network
-	if cfg.SecurityProtocol == "SASL_SSL" || cfg.SecurityProtocol == "SSL" {
-		conf.Net.TLS.Enable = true
-		conf.Net.TLS.Config = &tls.Config{
-			InsecureSkipVerify: cfg.InsecureSkipVerify, // Common for internal clusters
+	var mechanism sasl.Mechanism
+	if cfg.Username != "" {
+		mechanism = plain.Mechanism{
+			Username: cfg.Username,
+			Password: cfg.Password,
 		}
 	}
 
-	// SASL Auth
-	if cfg.Username != "" {
-		conf.Net.SASL.Enable = true
-		conf.Net.SASL.User = cfg.Username
-		conf.Net.SASL.Password = cfg.Password
-
-		// Default to PLAIN mechanism as it is most common and doesn't require extra libs
-		conf.Net.SASL.Mechanism = sarama.SASLTypePlaintext
+	var tlsConf *tls.Config
+	if cfg.SecurityProtocol == "SASL_SSL" || cfg.SecurityProtocol == "SSL" {
+		tlsConf = &tls.Config{
+			InsecureSkipVerify: cfg.InsecureSkipVerify,
+		}
 	}
 
-	// Producer reliability
-	conf.Producer.Return.Successes = true
-	conf.Producer.RequiredAcks = sarama.WaitForAll
-	conf.Producer.Retry.Max = 5
-	conf.Producer.Retry.Backoff = 100 * time.Millisecond
+	dialer := &kafka.Dialer{
+		Timeout:       10 * time.Second,
+		DualStack:     true,
+		TLS:           tlsConf,
+		SASLMechanism: mechanism,
+	}
 
 	brokerList := strings.Split(cfg.Host, ",")
 
 	// Fast fail check
-	client, err := sarama.NewClient(brokerList, conf)
+	conn, err := dialer.DialContext(context.Background(), "tcp", brokerList[0])
 	if err != nil {
 		return nil, err
 	}
-	defer client.Close() // We only close the verification client
+	defer conn.Close()
 
 	logger.Info().Str("brokers", cfg.Host).Msg("Kafka config valid and reachable")
 
 	return &Client{
-		cfg:        cfg,
-		saramaConf: conf,
-		log:        logger,
-		brokers:    brokerList,
+		cfg:     cfg,
+		dialer:  dialer,
+		log:     logger,
+		brokers: brokerList,
 	}, nil
 }
 
@@ -111,67 +92,73 @@ func applyDefaults(cfg config.KafkaConfig) config.KafkaConfig {
 	if cfg.Host == "" {
 		cfg.Host = "127.0.0.1:9092"
 	}
-	// If auth is provided but protocol missing, prefer secure
 	if cfg.Username != "" && cfg.SecurityProtocol == "" {
 		cfg.SecurityProtocol = "SASL_SSL"
 	}
-	// If simple local
 	if cfg.Username == "" && cfg.SecurityProtocol == "" {
 		cfg.SecurityProtocol = "PLAINTEXT"
 	}
 	return cfg
 }
 
-// NewProducer creates a synchronous producer.
-// SyncProducer publishes messages and waits for acknowledgement (ACK).
-func (k *Client) NewProducer() (sarama.SyncProducer, error) {
-	return sarama.NewSyncProducer(k.brokers, k.saramaConf)
+// NewWriter creates a new Kafka Writer (Producer).
+// Writers in kafka-go automatically handle retries, connection drops, and load balancing.
+func (k *Client) NewWriter() *kafka.Writer {
+	return &kafka.Writer{
+		Addr: kafka.TCP(k.brokers...),
+		Transport: &kafka.Transport{
+			TLS:  k.dialer.TLS,
+			SASL: k.dialer.SASLMechanism,
+		},
+		Balancer:     &kafka.Hash{},
+		RequiredAcks: kafka.RequireAll,
+		MaxAttempts:  5,
+	}
 }
 
-// NewAsyncProducer creates an asynchronous producer.
-// AsyncProducer publishes messages to a channel and does not wait for ACK immediately,
-// increasing throughput.
-func (k *Client) NewAsyncProducer() (sarama.AsyncProducer, error) {
-	return sarama.NewAsyncProducer(k.brokers, k.saramaConf)
+// NewReader creates a new Kafka Reader (Consumer Group).
+// Readers automatically handle rebalancing and offset commits.
+// Usage: msg, err := reader.ReadMessage(ctx)
+func (k *Client) NewReader(topic string, groupID string) *kafka.Reader {
+	return kafka.NewReader(kafka.ReaderConfig{
+		Brokers: k.brokers,
+		GroupID: groupID,
+		Topic:   topic,
+		Dialer:  k.dialer,
+		MaxWait: 1 * time.Second, // Batching wait time
+	})
 }
 
-// NewConsumerGroup creates a consumer group.
-// It manages partition offsets and rebalancing automatically.
-func (k *Client) NewConsumerGroup(groupID string) (sarama.ConsumerGroup, error) {
-	return sarama.NewConsumerGroup(k.brokers, groupID, k.saramaConf)
-}
+// Publish is a convenient shortcut to send a single message synchronously.
+// It accepts a 'key' for partition ordering guarantees.
+func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []byte) error {
+	k.writerLock.Lock()
+	if k.writer == nil {
+		k.writer = k.NewWriter()
+	}
+	w := k.writer
+	k.writerLock.Unlock()
 
-// Publish sends a message to the specified topic.
-// It uses an internal synchronous producer (singleton) to ensure reliability.
-// This is a shortcut for creating a NewProducer() and sending a message.
-func (k *Client) Publish(ctx context.Context, topic string, value []byte) error {
-	k.prodLock.Lock()
-	defer k.prodLock.Unlock()
-
-	if k.producer == nil {
-		p, err := sarama.NewSyncProducer(k.brokers, k.saramaConf)
-		if err != nil {
-			return err
-		}
-		k.producer = p
+	msg := kafka.Message{
+		Topic: topic,
+		Value: value,
+	}
+	if len(key) > 0 {
+		msg.Key = key
 	}
 
-	_, _, err := k.producer.SendMessage(&sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.ByteEncoder(value),
-	})
-	return err
+	// WriteMessages blocks until the message is written or the context is cancelled.
+	return w.WriteMessages(ctx, msg)
 }
 
-// Close closes the internal producer if it was initialized.
-// Note: Created factories (NewProducer, etc) must be closed individually by the caller.
+// Close gracefully flushes and closes the internal singleton writer if initialized.
 func (k *Client) Close() error {
-	k.prodLock.Lock()
-	defer k.prodLock.Unlock()
+	k.writerLock.Lock()
+	defer k.writerLock.Unlock()
 
-	if k.producer != nil {
-		err := k.producer.Close()
-		k.producer = nil
+	if k.writer != nil {
+		err := k.writer.Close()
+		k.writer = nil
 		return err
 	}
 	return nil

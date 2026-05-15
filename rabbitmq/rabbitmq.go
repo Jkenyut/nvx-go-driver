@@ -331,3 +331,36 @@ func (r *Client) Close() error {
 
 	return nil
 }
+
+// DeclareExchange creates an exchange on the RabbitMQ server.
+func (r *Client) DeclareExchange(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	return ch.ExchangeDeclare(name, kind, durable, autoDelete, internal, noWait, args)
+}
+
+// DeclareQueue creates a queue on the RabbitMQ server.
+func (r *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error) {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return amqp.Queue{}, err
+	}
+	defer ch.Close()
+
+	return ch.QueueDeclare(name, durable, autoDelete, exclusive, noWait, args)
+}
+
+// BindQueue binds a queue to an exchange with a routing key.
+func (r *Client) BindQueue(queue, routingKey, exchange string, noWait bool, args amqp.Table) error {
+	ch, err := r.NewChannel()
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	return ch.QueueBind(queue, routingKey, exchange, noWait, args)
+}
