@@ -54,10 +54,5 @@ func (c *SQLConfig) WithDefaults() *SQLConfig {
 		c.ConnectTimeout = 10 // 10 seconds — safe for cloud/network flakes
 	}
 
-	// Reconnect behavior
-	if !c.AutoReconnect {
-		c.AutoReconnect = true
-	}
-
 	return c
 }

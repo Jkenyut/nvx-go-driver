@@ -1,8 +1,11 @@
 package rabbitmq
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -90,25 +93,59 @@ func applyDefaults(
 		cfg.ReconnectDuration = 5
 	}
 
+	if cfg.ConnectTimeout == 0 {
+		cfg.ConnectTimeout = 10
+	}
+
+	if cfg.PublishTimeout == 0 {
+		cfg.PublishTimeout = 5
+	}
+
 	return cfg
+}
+
+func (r *Client) connectTimeout() time.Duration {
+	if r.cfg.ConnectTimeout <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(r.cfg.ConnectTimeout) * time.Second
+}
+
+func (r *Client) publishTimeout() time.Duration {
+	if r.cfg.PublishTimeout <= 0 {
+		return 5 * time.Second
+	}
+	return time.Duration(r.cfg.PublishTimeout) * time.Second
 }
 
 func (r *Client) connect() error {
 
-	dsn := fmt.Sprintf(
-		"amqp://%s:%s@%s:%d/",
-		r.cfg.Username,
-		r.cfg.Password,
-		r.cfg.Host,
-		r.cfg.Port,
-	)
+	scheme := "amqp"
+	if r.cfg.TLS {
+		scheme = "amqps"
+	}
+	dsn := (&url.URL{
+		Scheme: scheme,
+		User:   url.UserPassword(r.cfg.Username, r.cfg.Password),
+		Host:   net.JoinHostPort(r.cfg.Host, fmt.Sprintf("%d", r.cfg.Port)),
+		Path:   "/",
+	}).String()
+
+	amqpConfig := amqp.Config{
+		Heartbeat: 10 * time.Second,
+		Locale:    "en_US",
+		Dial:      amqp.DefaultDial(r.connectTimeout()),
+	}
+	if r.cfg.TLS {
+		amqpConfig.TLSClientConfig = &tls.Config{
+			ServerName:         r.cfg.Host,
+			InsecureSkipVerify: r.cfg.InsecureSkipVerify,
+		}
+	}
 
 	conn, err := amqp.DialConfig(
 		dsn,
-		amqp.Config{
-			Heartbeat: 10 * time.Second,
-			Locale:    "en_US",
-		},
+		amqpConfig,
 	)
 
 	if err != nil {

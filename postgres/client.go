@@ -32,6 +32,8 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net"
+	"net/url"
 	"regexp"
 	"sync/atomic"
 	"time"
@@ -43,7 +45,10 @@ import (
 	"github.com/rs/zerolog"
 )
 
-var passwordRegex = regexp.MustCompile(`://([^:@]+):([^:@]+)@`)
+var (
+	passwordRegex        = regexp.MustCompile(`://([^:@/]+):([^@/]+)@`)
+	keywordPasswordRegex = regexp.MustCompile(`(?i)(^|\s)(password|pass|pwd)=('[^']*'|"[^"]*"|\S*)`)
+)
 
 // Client wraps pgxpool.Pool with auto-reconnect, health monitoring,
 // graceful shutdown, and observability features.
@@ -110,7 +115,9 @@ func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger,
 		return nil, err
 	}
 
-	go client.monitor()
+	if cfg.AutoReconnect {
+		go client.monitor()
+	}
 	return client, nil
 }
 
@@ -373,11 +380,12 @@ func (c *Client) Close() error {
 	c.log.Info().Msg("Initiating graceful shutdown of PGXClient")
 	close(c.drain)
 
-	pool := c.Pool()
-	if pool == nil {
+	poolValue := c.pool.Load()
+	if poolValue == nil {
 		c.log.Info().Dur("uptime", time.Since(c.started)).Msg("PGXClient closed (no pool)")
 		return nil
 	}
+	pool := poolValue.(*pgxpool.Pool)
 
 	timeout := time.After(30 * time.Second)
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -489,15 +497,21 @@ func buildDSN(cfg config.SQLConfig) string {
 	if cfg.Connection != "" {
 		return cfg.Connection
 	}
-	base := fmt.Sprintf("postgres://%s:%s@%s:%d/%s", cfg.Username, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
-	if cfg.Options != "" {
-		return base + "?" + cfg.Options
+
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.Username, cfg.Password),
+		Host:     net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
+		Path:     "/" + cfg.Database,
+		RawPath:  "/" + url.PathEscape(cfg.Database),
+		RawQuery: cfg.Options,
 	}
-	return base
+	return dsn.String()
 }
 
 func maskPassword(dsn string) string {
-	return passwordRegex.ReplaceAllString(dsn, "://$1:****@")
+	masked := passwordRegex.ReplaceAllString(dsn, "://$1:****@")
+	return keywordPasswordRegex.ReplaceAllString(masked, "$1$2=****")
 }
 
 // jitter returns a random offset ±50% of the input duration.

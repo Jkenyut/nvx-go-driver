@@ -105,8 +105,21 @@ type RabbitMQConfig struct {
 	// Password RabbitMQ password
 	Password string `yaml:"password" default:"guest" desc:"config:rabbitmq:password"`
 
+	// TLS enables amqps:// transport encryption.
+	TLS bool `yaml:"tls" default:"false" desc:"config:rabbitmq:tls"`
+
+	// InsecureSkipVerify skips TLS certificate verification.
+	// Not recommended for production environments.
+	InsecureSkipVerify bool `yaml:"insecureSkipVerify" default:"false" desc:"config:rabbitmq:insecureSkipVerify"`
+
 	// ReconnectDuration retry interval before reconnect attempt in seconds
 	ReconnectDuration int `yaml:"reconnectDuration" default:"5" desc:"config:rabbitmq:reconnectDuration"`
+
+	// ConnectTimeout maximum time for TCP/TLS/AMQP handshake in seconds
+	ConnectTimeout int `yaml:"connectTimeout" default:"10" desc:"config:rabbitmq:connectTimeout"`
+
+	// PublishTimeout maximum time for one publish attempt and broker confirm in seconds
+	PublishTimeout int `yaml:"publishTimeout" default:"5" desc:"config:rabbitmq:publishTimeout"`
 
 	// DedicatedConnection enables dedicated connection per producer/consumer
 	// Helps isolate workload and improve stability
@@ -132,6 +145,13 @@ type RedisConfig struct {
 
 	// Password Redis authentication password
 	Password string `yaml:"password" default:"" desc:"config:redis:password"`
+
+	// TLS enables TLS transport encryption.
+	TLS bool `yaml:"tls" default:"false" desc:"config:redis:tls"`
+
+	// InsecureSkipVerify skips TLS certificate verification.
+	// Not recommended for production environments.
+	InsecureSkipVerify bool `yaml:"insecureSkipVerify" default:"false" desc:"config:redis:insecureSkipVerify"`
 
 	// Pool deprecated/basic pool configuration
 	Pool int `yaml:"pool" default:"10" desc:"config:redis:pool"`
