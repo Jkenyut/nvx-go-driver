@@ -69,26 +69,50 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:         addr,
-		Password:     cfg.Password,
-		DB:           cfg.Database,
-		PoolSize:     cfg.PoolSize,
-		MinIdleConns: cfg.MinIdleConn,
-		MaxIdleConns: cfg.MaxIdleConn,
-		DialTimeout:  time.Duration(cfg.ConnectTimeout) * time.Second,
-		ReadTimeout:  time.Duration(cfg.PoolTimeout) * time.Second,
-		WriteTimeout: time.Duration(cfg.PoolTimeout) * time.Second,
-
+		Addr:            addr,
+		Password:        cfg.Password,
+		DB:              cfg.Database,
+		PoolSize:        cfg.PoolSize,
+		MinIdleConns:    cfg.MinIdleConn,
+		MaxIdleConns:    cfg.MaxIdleConn,
+		ConnMaxLifetime: time.Duration(cfg.ConnMaxLife) * time.Second,
+		DialTimeout:     time.Duration(cfg.ConnectTimeout) * time.Second,
+		PoolTimeout:     time.Duration(cfg.PoolTimeout) * time.Second,
 		// go-redis handles reconnects automatically
 	})
 
-	// Verify connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	var err error
+	maxAttempts := 1
+	if cfg.AutoReconnect {
+		if cfg.MaxError > 0 {
+			maxAttempts = cfg.MaxError
+		} else {
+			maxAttempts = 5
+		}
+	}
 
-	if err := rdb.Ping(ctx).Err(); err != nil {
+	for i := 1; i <= maxAttempts; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ConnectTimeout)*time.Second)
+		err = rdb.Ping(ctx).Err()
+		cancel()
+
+		if err == nil {
+			break
+		}
+
+		if i < maxAttempts {
+			logger.Warn().
+				Err(err).
+				Int("attempt", i).
+				Int("max_attempts", maxAttempts).
+				Msg("Redis connection failed, retrying...")
+			time.Sleep(time.Duration(cfg.StartInterval) * time.Second)
+		}
+	}
+
+	if err != nil {
 		rdb.Close()
-		return nil, fmt.Errorf("redis connection failed: %w", err)
+		return nil, fmt.Errorf("redis connection failed after %d attempts: %w", maxAttempts, err)
 	}
 
 	logger.Info().
@@ -111,16 +135,28 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 		cfg.Port = 6379
 	}
 	if cfg.PoolSize == 0 {
-		cfg.PoolSize = 10
+		cfg.PoolSize = 30
 	}
 	if cfg.MinIdleConn == 0 {
-		cfg.MinIdleConn = 5
+		cfg.MinIdleConn = 7
+	}
+	if cfg.MaxIdleConn == 0 {
+		cfg.MaxIdleConn = 15
 	}
 	if cfg.PoolTimeout == 0 {
 		cfg.PoolTimeout = 30
 	}
 	if cfg.ConnectTimeout == 0 {
 		cfg.ConnectTimeout = 5
+	}
+	if cfg.ConnMaxLife == 0 {
+		cfg.ConnMaxLife = 600
+	}
+	if cfg.StartInterval == 0 {
+		cfg.StartInterval = 2
+	}
+	if cfg.MaxError == 0 {
+		cfg.MaxError = 5
 	}
 	return cfg
 }

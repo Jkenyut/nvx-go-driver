@@ -170,7 +170,7 @@ func (r *Client) reconnectLoop() {
 			make(chan *amqp.Error, 1),
 		)
 
-		err, ok := <-closeChan
+		err := <-closeChan
 
 		select {
 		case <-r.done:
@@ -187,27 +187,20 @@ func (r *Client) reconnectLoop() {
 			continue
 		}
 
-		// graceful close
-		if !ok || err == nil {
-
-			if r.closed.Load() {
-				return
-			}
-
-			select {
-			case <-r.done:
-				return
-			case <-time.After(backoff):
-			}
-
-			continue
+		if r.closed.Load() {
+			return
 		}
 
 		r.ready.Store(false)
 
-		r.log.Warn().
-			Err(err).
-			Msg("RabbitMQ connection lost")
+		if err != nil {
+			r.log.Warn().
+				Err(err).
+				Msg("RabbitMQ connection lost")
+		} else {
+			r.log.Warn().
+				Msg("RabbitMQ connection closed unexpectedly")
+		}
 
 		for {
 
@@ -302,11 +295,9 @@ func (r *Client) Ping() error {
 
 func (r *Client) Close() error {
 
-	if r.closed.Load() {
+	if !r.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-
-	r.closed.Store(true)
 
 	select {
 	case <-r.done:

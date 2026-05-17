@@ -25,17 +25,17 @@ type SQLConfig struct {
 	MaxConn int `yaml:"max_conn" json:"max_conn" default:"0"`
 
 	// MinConns keeps connections warm and ready
-	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`   
-	                                     // 0 
+	MinConn int `yaml:"min_conn" json:"min_conn" default:"0"`
+	// 0
 	// MaxConnLifetime closes connections after this duration
-    // Helps distribute load across read replicas behind a load balancer
-	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`   // seconds
+	// Helps distribute load across read replicas behind a load balancer
+	MaxConnLifetime int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"` // seconds
 
 	// MaxConnIdleTime closes idle connections to free resources
-	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`  // seconds
+	MaxConnIdleTime int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"` // seconds
 
 	// HealthCheckPeriod specifies how often to check connection health
-    // Stale connections are closed and replaced
+	// Stale connections are closed and replaced
 	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"` // seconds
 
 	// ConnectTimeout sets the maximum time to wait for a connection

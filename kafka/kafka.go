@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
@@ -13,7 +14,22 @@ import (
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"
+	"github.com/segmentio/kafka-go/sasl/scram"
 )
+
+// SmartBalancer balances keyed messages by Murmur2 (Java compatible),
+// and keyless by LeastBytes to prevent partition 0 hotspotting.
+type SmartBalancer struct {
+	Murmur2    kafka.Murmur2Balancer
+	LeastBytes kafka.LeastBytes
+}
+
+func (b *SmartBalancer) Balance(msg kafka.Message, partitions ...int) int {
+	if len(msg.Key) > 0 {
+		return b.Murmur2.Balance(msg, partitions...)
+	}
+	return b.LeastBytes.Balance(msg, partitions...)
+}
 
 // Client acts as a factory for creating Producers (Writers) and Consumers (Readers)
 // with consistent configuration and logging.
@@ -25,7 +41,8 @@ type Client struct {
 
 	// Internal singleton producer for shortcuts
 	writer     *kafka.Writer
-	writerLock sync.Mutex
+	writerLock sync.RWMutex
+	closed     atomic.Uint32
 }
 
 // NewClient creates a new Kafka factory based on segmentio/kafka-go.
@@ -49,9 +66,24 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 
 	var mechanism sasl.Mechanism
 	if cfg.Username != "" {
-		mechanism = plain.Mechanism{
-			Username: cfg.Username,
-			Password: cfg.Password,
+		switch strings.ToUpper(cfg.Mechanisms) {
+		case "SCRAM-SHA-256":
+			mech, err := scram.Mechanism(scram.SHA256, cfg.Username, cfg.Password)
+			if err != nil {
+				return nil, err
+			}
+			mechanism = mech
+		case "SCRAM-SHA-512":
+			mech, err := scram.Mechanism(scram.SHA512, cfg.Username, cfg.Password)
+			if err != nil {
+				return nil, err
+			}
+			mechanism = mech
+		default: // Defaults to PLAIN
+			mechanism = plain.Mechanism{
+				Username: cfg.Username,
+				Password: cfg.Password,
+			}
 		}
 	}
 
@@ -71,12 +103,25 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 
 	brokerList := strings.Split(cfg.Host, ",")
 
-	// Fast fail check
-	conn, err := dialer.DialContext(context.Background(), "tcp", brokerList[0])
-	if err != nil {
-		return nil, err
+	// Fast fail check - try all brokers, succeed if at least one is reachable
+	var lastErr error
+	var connected bool
+	for _, broker := range brokerList {
+		conn, err := dialer.DialContext(context.Background(), "tcp", strings.TrimSpace(broker))
+		if err == nil {
+			conn.Close()
+			connected = true
+			break
+		}
+		lastErr = err
 	}
-	defer conn.Close()
+
+	if !connected {
+		if lastErr != nil {
+			return nil, errors.New("all kafka brokers unreachable: " + lastErr.Error())
+		}
+		return nil, errors.New("no kafka brokers configured")
+	}
 
 	logger.Info().Str("brokers", cfg.Host).Msg("Kafka config valid and reachable")
 
@@ -107,12 +152,16 @@ func (k *Client) NewWriter() *kafka.Writer {
 	return &kafka.Writer{
 		Addr: kafka.TCP(k.brokers...),
 		Transport: &kafka.Transport{
-			TLS:  k.dialer.TLS,
-			SASL: k.dialer.SASLMechanism,
+			TLS:         k.dialer.TLS,
+			SASL:        k.dialer.SASLMechanism,
+			DialTimeout: 10 * time.Second,
+			IdleTimeout: 9 * time.Minute,
 		},
-		Balancer:     &kafka.Hash{},
+		Balancer:     &SmartBalancer{},
 		RequiredAcks: kafka.RequireAll,
 		MaxAttempts:  5,
+		BatchTimeout: 10 * time.Millisecond,
+		BatchSize:    100,
 	}
 }
 
@@ -132,12 +181,26 @@ func (k *Client) NewReader(topic string, groupID string) *kafka.Reader {
 // Publish is a convenient shortcut to send a single message synchronously.
 // It accepts a 'key' for partition ordering guarantees.
 func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []byte) error {
-	k.writerLock.Lock()
-	if k.writer == nil {
-		k.writer = k.NewWriter()
+	if k.closed.Load() == 1 {
+		return errors.New("kafka client is closed")
 	}
+
+	k.writerLock.RLock()
 	w := k.writer
-	k.writerLock.Unlock()
+	k.writerLock.RUnlock()
+
+	if w == nil {
+		k.writerLock.Lock()
+		if k.closed.Load() == 1 {
+			k.writerLock.Unlock()
+			return errors.New("kafka client is closed")
+		}
+		if k.writer == nil {
+			k.writer = k.NewWriter()
+		}
+		w = k.writer
+		k.writerLock.Unlock()
+	}
 
 	msg := kafka.Message{
 		Topic: topic,
@@ -153,6 +216,10 @@ func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []
 
 // Close gracefully flushes and closes the internal singleton writer if initialized.
 func (k *Client) Close() error {
+	if !k.closed.CompareAndSwap(0, 1) {
+		return nil
+	}
+
 	k.writerLock.Lock()
 	defer k.writerLock.Unlock()
 
