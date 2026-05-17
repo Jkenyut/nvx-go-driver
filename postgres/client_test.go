@@ -71,6 +71,24 @@ func TestBuildDSN(t *testing.T) {
 	}
 }
 
+func TestBuildDSN_EscapesURLParts(t *testing.T) {
+	cfg := config.SQLConfig{
+		Host:     "localhost",
+		Port:     5432,
+		Username: "user@example",
+		Password: "pa:ss@word",
+		Database: "db/name",
+		Options:  "sslmode=require",
+	}
+
+	got := buildDSN(cfg)
+	expected := "postgres://user%40example:pa%3Ass%40word@localhost:5432/db%2Fname?sslmode=require"
+
+	if got != expected {
+		t.Errorf("buildDSN() = %v, want %v", got, expected)
+	}
+}
+
 func TestConfigDefaults(t *testing.T) {
 	// Since WithDefaults is in a different package (config) and is called by NewClient,
 	// we want to ensure NewClient applies them.
@@ -82,6 +100,16 @@ func TestConfigDefaults(t *testing.T) {
 	dsn := "postgres://user:secret@localhost:5432/db"
 	masked := maskPassword(dsn)
 	expected := "postgres://user:****@localhost:5432/db"
+
+	if masked != expected {
+		t.Errorf("maskPassword() = %v, want %v", masked, expected)
+	}
+}
+
+func TestMaskPassword_KeywordDSN(t *testing.T) {
+	dsn := "host=localhost user=postgres password='super secret' dbname=app"
+	masked := maskPassword(dsn)
+	expected := "host=localhost user=postgres password=**** dbname=app"
 
 	if masked != expected {
 		t.Errorf("maskPassword() = %v, want %v", masked, expected)

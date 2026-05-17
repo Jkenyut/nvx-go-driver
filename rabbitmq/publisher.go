@@ -286,103 +286,23 @@ func (p *Publisher) Publish(
 	p.lock.RUnlock()
 
 	for i := 0; i < attempts; i++ {
-
-		p.publishLock.Lock()
-
-		ch, err := p.channel()
-		if err != nil {
-			p.publishLock.Unlock()
-			lastErr = err
-
-			select {
-			case <-ctx.Done():
-				return errors.Join(lastErr, ctx.Err())
-			case <-p.done:
-				return errors.Join(lastErr, errors.New("publisher closed"))
-			case <-time.After(time.Second):
-			}
-			continue
+		err := p.publishOnce(ctx, exchange, routingKey, msg, mandatory, immediate)
+		if err == nil {
+			return nil
 		}
 
-		seqNo := ch.GetNextPublishSeqNo()
-		resultChan := make(chan error, 1)
-		p.pendingConfirms.Store(seqNo, resultChan)
+		lastErr = err
 
-		err = ch.PublishWithContext(
-			ctx,
-			exchange,
-			routingKey,
-			mandatory,
-			immediate,
-			msg,
-		)
-
-		if err != nil {
-			p.pendingConfirms.Delete(seqNo)
-			p.publishLock.Unlock()
-			lastErr = err
-
-			select {
-			case <-ctx.Done():
-				return errors.Join(lastErr, ctx.Err())
-			case <-p.done:
-				return errors.Join(lastErr, errors.New("publisher closed"))
-			case <-time.After(time.Second):
-			}
-			continue
+		if i == attempts-1 {
+			break
 		}
-
-		p.publishLock.Unlock()
-
-		timer := time.NewTimer(5 * time.Second)
 
 		select {
-
-		case resErr := <-resultChan:
-			timer.Stop()
-
-			if resErr != nil {
-				lastErr = resErr
-
-				select {
-				case <-ctx.Done():
-					return errors.Join(lastErr, ctx.Err())
-				case <-p.done:
-					return errors.Join(lastErr, errors.New("publisher closed"))
-				case <-time.After(time.Second):
-				}
-				continue
-			}
-
-			return nil
-
-		case <-p.done:
-			timer.Stop()
-			p.pendingConfirms.Delete(seqNo)
-			if lastErr != nil {
-				return errors.Join(lastErr, errors.New("publisher closed while waiting for confirm"))
-			}
-			return errors.New("publisher closed while waiting for confirm")
-
 		case <-ctx.Done():
-			timer.Stop()
-			p.pendingConfirms.Delete(seqNo)
-			if lastErr != nil {
-				return errors.Join(lastErr, ctx.Err())
-			}
-			return ctx.Err()
-
-		case <-timer.C:
-			p.pendingConfirms.Delete(seqNo)
-			lastErr = errors.New("publisher confirm timeout")
-
-			select {
-			case <-ctx.Done():
-				return errors.Join(lastErr, ctx.Err())
-			case <-p.done:
-				return errors.Join(lastErr, errors.New("publisher closed"))
-			case <-time.After(time.Second):
-			}
+			return errors.Join(lastErr, ctx.Err())
+		case <-p.done:
+			return errors.Join(lastErr, errors.New("publisher closed"))
+		case <-time.After(time.Second):
 		}
 	}
 
@@ -390,6 +310,60 @@ func (p *Publisher) Publish(
 		lastErr = errors.New("failed to publish message after max attempts")
 	}
 	return lastErr
+}
+
+func (p *Publisher) publishOnce(
+	ctx context.Context,
+	exchange string,
+	routingKey string,
+	msg amqp.Publishing,
+	mandatory bool,
+	immediate bool,
+) error {
+	publishCtx, cancel := context.WithTimeout(ctx, p.client.publishTimeout())
+	defer cancel()
+
+	p.publishLock.Lock()
+
+	ch, err := p.channel()
+	if err != nil {
+		p.publishLock.Unlock()
+		return err
+	}
+
+	seqNo := ch.GetNextPublishSeqNo()
+	resultChan := make(chan error, 1)
+	p.pendingConfirms.Store(seqNo, resultChan)
+
+	err = ch.PublishWithContext(
+		publishCtx,
+		exchange,
+		routingKey,
+		mandatory,
+		immediate,
+		msg,
+	)
+
+	if err != nil {
+		p.pendingConfirms.Delete(seqNo)
+		p.publishLock.Unlock()
+		return err
+	}
+
+	p.publishLock.Unlock()
+
+	select {
+	case resErr := <-resultChan:
+		return resErr
+
+	case <-p.done:
+		p.pendingConfirms.Delete(seqNo)
+		return errors.New("publisher closed while waiting for confirm")
+
+	case <-publishCtx.Done():
+		p.pendingConfirms.Delete(seqNo)
+		return errors.Join(errors.New("publisher publish timeout"), publishCtx.Err())
+	}
 }
 
 func (p *Publisher) Close() error {

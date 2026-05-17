@@ -22,6 +22,8 @@ func TestApplyDefaults(t *testing.T) {
 				Username:          "guest",
 				Password:          "guest",
 				ReconnectDuration: 5,
+				ConnectTimeout:    10,
+				PublishTimeout:    5,
 			},
 		},
 		{
@@ -35,6 +37,8 @@ func TestApplyDefaults(t *testing.T) {
 				Username:          "guest",
 				Password:          "guest",
 				ReconnectDuration: 5,
+				ConnectTimeout:    10,
+				PublishTimeout:    5,
 			},
 		},
 	}
@@ -53,6 +57,12 @@ func TestApplyDefaults(t *testing.T) {
 			}
 			if got.ReconnectDuration != tt.expected.ReconnectDuration {
 				t.Errorf("ReconnectDuration = %v, want %v", got.ReconnectDuration, tt.expected.ReconnectDuration)
+			}
+			if got.ConnectTimeout != tt.expected.ConnectTimeout {
+				t.Errorf("ConnectTimeout = %v, want %v", got.ConnectTimeout, tt.expected.ConnectTimeout)
+			}
+			if got.PublishTimeout != tt.expected.PublishTimeout {
+				t.Errorf("PublishTimeout = %v, want %v", got.PublishTimeout, tt.expected.PublishTimeout)
 			}
 		})
 	}

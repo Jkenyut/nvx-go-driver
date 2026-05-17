@@ -66,36 +66,48 @@ func NewConsumer(
 func (c *Consumer) SetQos(
 	qos int,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.qos = qos
 }
 
 func (c *Consumer) SetAutoAck(
 	autoAck bool,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.autoAck = autoAck
 }
 
 func (c *Consumer) SetExclusive(
 	exclusive bool,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.exclusive = exclusive
 }
 
 func (c *Consumer) SetNoLocal(
 	noLocal bool,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.noLocal = noLocal
 }
 
 func (c *Consumer) SetNoWait(
 	noWait bool,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.noWait = noWait
 }
 
 func (c *Consumer) SetArgs(
 	args amqp.Table,
 ) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
 	c.args = args
 }
 
@@ -124,6 +136,7 @@ func (c *Consumer) loop(
 	ctx context.Context,
 	handler HandlerFunc,
 ) {
+	queue := c.queue
 
 	for {
 
@@ -142,7 +155,7 @@ func (c *Consumer) loop(
 
 			c.client.log.Error().
 				Err(err).
-				Str("queue", c.queue).
+				Str("queue", queue).
 				Msg("Consumer stopped")
 		}
 
@@ -163,6 +176,15 @@ func (c *Consumer) consume(
 	ctx context.Context,
 	handler HandlerFunc,
 ) error {
+	c.lock.RLock()
+	queue := c.queue
+	autoAck := c.autoAck
+	qos := c.qos
+	exclusive := c.exclusive
+	noLocal := c.noLocal
+	noWait := c.noWait
+	args := c.args
+	c.lock.RUnlock()
 
 	ch, err := c.client.NewChannel()
 	if err != nil {
@@ -186,7 +208,7 @@ func (c *Consumer) consume(
 	}()
 
 	err = ch.Qos(
-		c.qos,
+		qos,
 		0,
 		false,
 	)
@@ -197,7 +219,7 @@ func (c *Consumer) consume(
 
 	consumerTag := fmt.Sprintf(
 		"%s-%d",
-		c.queue,
+		queue,
 		time.Now().UnixNano(),
 	)
 
@@ -206,13 +228,13 @@ func (c *Consumer) consume(
 	c.lock.Unlock()
 
 	msgs, err := ch.Consume(
-		c.queue,
+		queue,
 		consumerTag,
-		c.autoAck,
-		c.exclusive,
-		c.noLocal,
-		c.noWait,
-		c.args,
+		autoAck,
+		exclusive,
+		noLocal,
+		noWait,
+		args,
 	)
 
 	if err != nil {
@@ -248,11 +270,11 @@ func (c *Consumer) consume(
 				defer func() {
 					if r := recover(); r != nil {
 						c.client.log.Error().
-							Str("queue", c.queue).
+							Str("queue", queue).
 							Interface("panic", r).
 							Msg("Consumer panic recovered")
 
-						if !c.autoAck {
+						if !autoAck {
 							_ = msg.Nack(false, true)
 						}
 					}
@@ -260,7 +282,7 @@ func (c *Consumer) consume(
 
 				action := handler(ctx, msg)
 
-				if !c.autoAck {
+				if !autoAck {
 					switch action {
 					case ActionAck:
 						_ = msg.Ack(false)
@@ -274,7 +296,7 @@ func (c *Consumer) consume(
 						// Safe fallback: Discard on unknown action
 						c.client.log.Warn().
 							Int("action", int(action)).
-							Str("queue", c.queue).
+							Str("queue", queue).
 							Msg("Unknown consumer action, discarding message")
 						_ = msg.Nack(false, false)
 					}

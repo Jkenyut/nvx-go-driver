@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"time"
@@ -72,6 +73,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 		Addr:            addr,
 		Password:        cfg.Password,
 		DB:              cfg.Database,
+		TLSConfig:       redisTLSConfig(cfg),
 		PoolSize:        cfg.PoolSize,
 		MinIdleConns:    cfg.MinIdleConn,
 		MaxIdleConns:    cfg.MaxIdleConn,
@@ -125,6 +127,16 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 		cfg:    cfg,
 		log:    logger,
 	}, nil
+}
+
+func redisTLSConfig(cfg config.RedisConfig) *tls.Config {
+	if !cfg.TLS {
+		return nil
+	}
+	return &tls.Config{
+		ServerName:         cfg.Host,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
 }
 
 func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
