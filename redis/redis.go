@@ -135,10 +135,10 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 		cfg.Port = 6379
 	}
 	if cfg.PoolSize == 0 {
-		cfg.PoolSize = 30
+		cfg.PoolSize = 10
 	}
 	if cfg.MinIdleConn == 0 {
-		cfg.MinIdleConn = 7
+		cfg.MinIdleConn = 5
 	}
 	if cfg.MaxIdleConn == 0 {
 		cfg.MaxIdleConn = 15
