@@ -2,12 +2,12 @@ package redis
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
@@ -135,10 +135,10 @@ func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
 		cfg.Port = 6379
 	}
 	if cfg.PoolSize == 0 {
-		cfg.PoolSize = 30
+		cfg.PoolSize = 10
 	}
 	if cfg.MinIdleConn == 0 {
-		cfg.MinIdleConn = 7
+		cfg.MinIdleConn = 5
 	}
 	if cfg.MaxIdleConn == 0 {
 		cfg.MaxIdleConn = 15
@@ -245,7 +245,7 @@ func (r *Client) SetJSON(ctx context.Context, key string, value interface{}, exp
 	if r.client == nil {
 		return errors.New("redis client is nil")
 	}
-	bytes, err := json.Marshal(value)
+	bytes, err := sonic.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("failed to marshal json for redis: %w", err)
 	}
@@ -261,7 +261,7 @@ func (r *Client) GetJSON(ctx context.Context, key string, dest interface{}) erro
 	if err != nil {
 		return err // Returns redis.Nil if key does not exist
 	}
-	if err := json.Unmarshal(val, dest); err != nil {
+	if err := sonic.Unmarshal(val, dest); err != nil {
 		return fmt.Errorf("failed to unmarshal json from redis: %w", err)
 	}
 	return nil
