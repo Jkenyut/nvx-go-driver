@@ -1,92 +1,218 @@
 package config
 
-// Listener default config
+// Listener default configuration
 type Listener struct {
-	Listen      string `yaml:"listen" default:"0.0.0.0"`
-	Port        int    `yaml:"port" default:"8081"`
+
+	// Listen host/interface address
+	// Example:
+	// 0.0.0.0 = listen on all interfaces
+	Listen string `yaml:"listen" default:"0.0.0.0"`
+
+	// Port application listening port
+	Port int `yaml:"port" default:"8081"`
+
+	// NameService application/service name
 	NameService string `yaml:"nameService" default:"service-name"`
-	Env         string `yaml:"env" default:"development"`
+
+	// Env application environment
+	// Example:
+	// development
+	// staging
+	// production
+	Env string `yaml:"env" default:"development"`
 }
 
 type SQLConfig struct {
-	Enable   bool   `yaml:"enable" json:"enable" default:"true"`
-	Host     string `yaml:"host" json:"host" default:"0.0.0.0"`
-	Port     int    `yaml:"port" json:"port" default:"5432"`
-	Username string `yaml:"username" json:"username" default:"postgres"`
-	Password string `yaml:"password" json:"password" default:"postgres"`
-	Database string `yaml:"database" json:"database" default:"postgres"`
-	Options  string `yaml:"options" json:"options" default:"sslmode=disable"`
 
-	// Optional full connection string override
+	// Enable enables/disables SQL database connection
+	Enable bool `yaml:"enable" json:"enable" default:"true"`
+
+	// Host database host/address
+	Host string `yaml:"host" json:"host" default:"0.0.0.0"`
+
+	// Port database port
+	Port int `yaml:"port" json:"port" default:"5432"`
+
+	// Username database username
+	Username string `yaml:"username" json:"username" default:"postgres"`
+
+	// Password database password
+	Password string `yaml:"password" json:"password" default:"postgres"`
+
+	// Database database/schema name
+	Database string `yaml:"database" json:"database" default:"postgres"`
+
+	// Options additional database connection options
+	// Example:
+	// sslmode=disable
+	Options string `yaml:"options" json:"options" default:"sslmode=disable"`
+
+	// Connection full connection string override
+	// If provided, individual connection fields may be ignored
 	Connection string `yaml:"connection" json:"connection" default:""`
 
-	// Pool size configuration
-	// MaxConns limits total connections to prevent database overload
+	// MaxConn maximum total active database connections
+	// Prevents database overload from excessive concurrent connections
 	MaxConn int `yaml:"max_conn" json:"max_conn" default:"0"`
 
-	// MinConns keeps connections warm and ready
-	MinConn           int `yaml:"min_conn" json:"min_conn" default:"0"`   
-	                                     // 0 
-	// MaxConnLifetime closes connections after this duration
-    // Helps distribute load across read replicas behind a load balancer
-	MaxConnLifetime   int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`   // seconds
+	// MinConn minimum standby connections maintained in the pool
+	// Helps reduce latency by keeping reusable connections ready
+	MinConn int `yaml:"min_conn" json:"min_conn" default:"0"`
 
-	// MaxConnIdleTime closes idle connections to free resources
-	MaxConnIdleTime   int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`  // seconds
+	// MaxConnLifetime maximum lifetime of a connection in seconds
+	// Old connections will be recycled automatically
+	//
+	// Useful for:
+	// - load balancer rotation
+	// - stale connection prevention
+	// - failover handling
+	MaxConnLifetime int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`
 
-	// HealthCheckPeriod specifies how often to check connection health
-    // Stale connections are closed and replaced
-	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"` // seconds
+	// MaxConnIdleTime maximum idle duration before connection is closed
+	// Helps release unused resources
+	MaxConnIdleTime int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`
 
-	// ConnectTimeout sets the maximum time to wait for a connection
-	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"` // seconds
+	// HealthCheckPeriod interval for connection health checking
+	// Unhealthy/stale connections will be replaced automatically
+	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"`
 
-	// AutoReconnect enables automatic reconnection on failure
+	// ConnectTimeout maximum time to establish database connection
+	// Prevents hanging connection attempts
+	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"`
+
+	// AutoReconnect automatically reconnects on connection failure
 	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
 
-	// For future / extensibility
+	// UseMock enables mock database implementation
+	// Useful for testing and local development
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
 }
 
 type RabbitMQConfig struct {
-	Enable              bool   `yaml:"enable" default:"false" desc:"config:rabbitmq:enable"`
-	Host                string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
-	Port                int    `yaml:"port" default:"5672" desc:"config:rabbitmq:port"`
-	Username            string `yaml:"username" default:"guest"  desc:"config:rabbitmq:username"`
-	Password            string `yaml:"password" default:"guest" desc:"config:rabbitmq:password"`
-	ReconnectDuration   int    `yaml:"reconnectDuration" default:"5" desc:"config:rabbitmq:reconnectDuration"`
-	DedicatedConnection bool   `yaml:"dedicatedConnection" default:"false" desc:"config:rabbitmq:dedicatedConnection"`
-	UseMock             bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+
+	// Enable enables/disables RabbitMQ connection
+	Enable bool `yaml:"enable" default:"false" desc:"config:rabbitmq:enable"`
+
+	// Host RabbitMQ server host/address
+	Host string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
+
+	// Port RabbitMQ server port
+	Port int `yaml:"port" default:"5672" desc:"config:rabbitmq:port"`
+
+	// Username RabbitMQ username
+	Username string `yaml:"username" default:"guest" desc:"config:rabbitmq:username"`
+
+	// Password RabbitMQ password
+	Password string `yaml:"password" default:"guest" desc:"config:rabbitmq:password"`
+
+	// ReconnectDuration retry interval before reconnect attempt in seconds
+	ReconnectDuration int `yaml:"reconnectDuration" default:"5" desc:"config:rabbitmq:reconnectDuration"`
+
+	// DedicatedConnection enables dedicated connection per producer/consumer
+	// Helps isolate workload and improve stability
+	DedicatedConnection bool `yaml:"dedicatedConnection" default:"false" desc:"config:rabbitmq:dedicatedConnection"`
+
+	// UseMock enables mock RabbitMQ implementation
+	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`
 }
 
 type RedisConfig struct {
-	Enable         bool   `yaml:"enable" default:"false" desc:"config:redis:enable"`
-	Database       int    `yaml:"database" default:"0" desc:"config:redis:database"`
-	Host           string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
-	Port           int    `yaml:"port" default:"6379" desc:"config:redis:port"`
-	Password       string `yaml:"password" default:"" desc:"config:redis:password"`
-	Pool           int    `yaml:"pool" default:"10" desc:"config:redis:pool"`
-	AutoReconnect  bool   `yaml:"autoReconnect" default:"false"  desc:"config:redis:autoReconnect"`
-	StartInterval  int    `yaml:"startInterval" default:"2"  desc:"config:redis:startInterval"`
-	MaxError       int    `yaml:"maxError" default:"5"  desc:"config:redis:maxError"`
-	PoolSize       int    `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
-	PoolTimeout    int    `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
-	ConnectTimeout int    `yaml:"connectTimeout" default:"5" desc:"config:redis:connectTimeout"`
-	MinIdleConn    int    `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
-	MaxIdleConn    int    `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
-	ConnMaxLife    int    `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
-	UseMock        bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
+
+	// Enable enables/disables Redis connection
+	Enable bool `yaml:"enable" default:"false" desc:"config:redis:enable"`
+
+	// Database Redis database index
+	Database int `yaml:"database" default:"0" desc:"config:redis:database"`
+
+	// Host Redis server host/address
+	Host string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
+
+	// Port Redis server port
+	Port int `yaml:"port" default:"6379" desc:"config:redis:port"`
+
+	// Password Redis authentication password
+	Password string `yaml:"password" default:"" desc:"config:redis:password"`
+
+	// Pool deprecated/basic pool configuration
+	Pool int `yaml:"pool" default:"10" desc:"config:redis:pool"`
+
+	// AutoReconnect automatically reconnects when connection is lost
+	AutoReconnect bool `yaml:"autoReconnect" default:"false" desc:"config:redis:autoReconnect"`
+
+	// StartInterval reconnect retry interval in seconds
+	StartInterval int `yaml:"startInterval" default:"2" desc:"config:redis:startInterval"`
+
+	// MaxError maximum allowed reconnect errors before stopping retries
+	MaxError int `yaml:"maxError" default:"5" desc:"config:redis:maxError"`
+
+	// PoolSize maximum total Redis connections in pool
+	PoolSize int `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
+
+	// PoolTimeout maximum wait time for acquiring connection from pool
+	PoolTimeout int `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
+
+	// ConnectTimeout maximum time to establish Redis connection
+	ConnectTimeout int `yaml:"connectTimeout" default:"5" desc:"config:redis:connectTimeout"`
+
+	// MinIdleConn minimum idle connections maintained
+	// Helps improve performance by keeping warm connections
+	MinIdleConn int `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
+
+	// MaxIdleConn maximum idle connections allowed
+	// Excess idle connections may be closed automatically
+	MaxIdleConn int `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
+
+	// ConnMaxLife maximum lifetime of Redis connection in seconds
+	// Old connections will be recycled automatically
+	ConnMaxLife int `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
+
+	// UseMock enables mock Redis implementation
+	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`
 }
 
 type KafkaConfig struct {
-	Enable             bool   `yaml:"enable" default:"false" desc:"config:kafka:enable"`
-	Host               string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
-	Registry           string `yaml:"registry" default:"" desc:"config:kafka:registry"`
-	Username           string `yaml:"username" default:""  desc:"config:kafka:username"`
-	Password           string `yaml:"password" default:"" desc:"config:kafka:password"`
-	SecurityProtocol   string `yaml:"securityProtocol" default:"SASL_SSL"  desc:"config:kafka:securityProtocol"`
-	Mechanisms         string `yaml:"mechanisms" default:"PLAIN"  desc:"config:kafka:mechanisms"`
-	UseMock            bool   `yaml:"useMock" default:"false"  desc:"config:useMock"`
-	InsecureSkipVerify bool   `yaml:"insecureSkipVerify" default:"false"  desc:"config:kafka:insecureSkipVerify"`
-	Debug              string `yaml:"debug" default:"consumer"  desc:"config:kafka:debug"`
+
+	// Enable enables/disables Kafka connection
+	Enable bool `yaml:"enable" default:"false" desc:"config:kafka:enable"`
+
+	// Host Kafka broker address
+	// Example:
+	// localhost:9092
+	Host string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
+
+	// Registry schema registry address
+	// Used for Avro/Schema-based serialization
+	Registry string `yaml:"registry" default:"" desc:"config:kafka:registry"`
+
+	// Username Kafka authentication username
+	Username string `yaml:"username" default:"" desc:"config:kafka:username"`
+
+	// Password Kafka authentication password
+	Password string `yaml:"password" default:"" desc:"config:kafka:password"`
+
+	// SecurityProtocol Kafka security protocol
+	// Example:
+	// SASL_SSL
+	// PLAINTEXT
+	SecurityProtocol string `yaml:"securityProtocol" default:"SASL_SSL" desc:"config:kafka:securityProtocol"`
+
+	// Mechanisms SASL authentication mechanism
+	// Example:
+	// PLAIN
+	// SCRAM-SHA-256
+	Mechanisms string `yaml:"mechanisms" default:"PLAIN" desc:"config:kafka:mechanisms"`
+
+	// UseMock enables mock Kafka implementation
+	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`
+
+	// InsecureSkipVerify skips SSL certificate verification
+	// Not recommended for production environments
+	InsecureSkipVerify bool `yaml:"insecureSkipVerify" default:"false" desc:"config:kafka:insecureSkipVerify"`
+
+	// Debug enables Kafka client debug mode
+	// Example:
+	// consumer
+	// producer
+	// broker
+	Debug string `yaml:"debug" default:"consumer" desc:"config:kafka:debug"`
 }

@@ -127,7 +127,7 @@ func (p *Publisher) reconnectLoop() {
 			make(chan *amqp.Error, 1),
 		)
 
-		err, ok := <-closeChan
+		err := <-closeChan
 
 		select {
 		case <-p.done:
@@ -144,21 +144,14 @@ func (p *Publisher) reconnectLoop() {
 			continue
 		}
 
-		// graceful close
-		if !ok || err == nil {
-
-			select {
-			case <-p.done:
-				return
-			case <-time.After(backoff):
-			}
-
-			continue
+		if err != nil {
+			p.client.log.Warn().
+				Err(err).
+				Msg("RabbitMQ publisher channel lost")
+		} else {
+			p.client.log.Warn().
+				Msg("RabbitMQ publisher channel closed unexpectedly")
 		}
-
-		p.client.log.Warn().
-			Err(err).
-			Msg("RabbitMQ publisher channel lost")
 
 		for {
 
@@ -212,6 +205,14 @@ func (p *Publisher) reconnectLoop() {
 
 			p.lock.Lock()
 
+			select {
+			case <-p.done:
+				p.lock.Unlock()
+				_ = newCh.Close()
+				return
+			default:
+			}
+
 			oldCh := p.ch
 
 			// Reject all pending confirms with error because channel is recreated
@@ -227,9 +228,9 @@ func (p *Publisher) reconnectLoop() {
 
 			p.ch = newCh
 
-			p.lock.Unlock()
-
 			p.startConfirmListener(newCh)
+
+			p.lock.Unlock()
 
 			if oldCh != nil && !oldCh.IsClosed() {
 				_ = oldCh.Close()
@@ -292,7 +293,14 @@ func (p *Publisher) Publish(
 		if err != nil {
 			p.publishLock.Unlock()
 			lastErr = err
-			time.Sleep(time.Second)
+
+			select {
+			case <-ctx.Done():
+				return errors.Join(lastErr, ctx.Err())
+			case <-p.done:
+				return errors.Join(lastErr, errors.New("publisher closed"))
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 
@@ -313,47 +321,88 @@ func (p *Publisher) Publish(
 			p.pendingConfirms.Delete(seqNo)
 			p.publishLock.Unlock()
 			lastErr = err
-			time.Sleep(time.Second)
+
+			select {
+			case <-ctx.Done():
+				return errors.Join(lastErr, ctx.Err())
+			case <-p.done:
+				return errors.Join(lastErr, errors.New("publisher closed"))
+			case <-time.After(time.Second):
+			}
 			continue
 		}
 
 		p.publishLock.Unlock()
 
+		timer := time.NewTimer(5 * time.Second)
+
 		select {
 
 		case resErr := <-resultChan:
+			timer.Stop()
 
 			if resErr != nil {
 				lastErr = resErr
-				time.Sleep(time.Second)
+
+				select {
+				case <-ctx.Done():
+					return errors.Join(lastErr, ctx.Err())
+				case <-p.done:
+					return errors.Join(lastErr, errors.New("publisher closed"))
+				case <-time.After(time.Second):
+				}
 				continue
 			}
 
 			return nil
 
-		case <-ctx.Done():
+		case <-p.done:
+			timer.Stop()
 			p.pendingConfirms.Delete(seqNo)
+			if lastErr != nil {
+				return errors.Join(lastErr, errors.New("publisher closed while waiting for confirm"))
+			}
+			return errors.New("publisher closed while waiting for confirm")
+
+		case <-ctx.Done():
+			timer.Stop()
+			p.pendingConfirms.Delete(seqNo)
+			if lastErr != nil {
+				return errors.Join(lastErr, ctx.Err())
+			}
 			return ctx.Err()
 
-		case <-time.After(5 * time.Second):
+		case <-timer.C:
 			p.pendingConfirms.Delete(seqNo)
 			lastErr = errors.New("publisher confirm timeout")
-			time.Sleep(time.Second)
+
+			select {
+			case <-ctx.Done():
+				return errors.Join(lastErr, ctx.Err())
+			case <-p.done:
+				return errors.Join(lastErr, errors.New("publisher closed"))
+			case <-time.After(time.Second):
+			}
 		}
 	}
 
+	if lastErr == nil {
+		lastErr = errors.New("failed to publish message after max attempts")
+	}
 	return lastErr
 }
 
 func (p *Publisher) Close() error {
 
+	p.lock.Lock()
+
 	select {
 	case <-p.done:
+		p.lock.Unlock()
+		return nil
 	default:
 		close(p.done)
 	}
-
-	p.lock.Lock()
 
 	ch := p.ch
 	p.ch = nil

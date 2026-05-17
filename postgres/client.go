@@ -54,6 +54,7 @@ type Client struct {
 	started   time.Time
 	drain     chan struct{}
 	reconnect atomic.Int64 // reconnect counter
+	healthy   atomic.Bool  // cached health status for metrics
 
 	log *zerolog.Logger
 	// AfterConnect is called after a new connection is established
@@ -121,6 +122,7 @@ func (c *Client) connectInitial() error {
 		return err
 	}
 	c.setPool(pool)
+	c.healthy.Store(true)
 	c.log.Info().
 		Str("dsn", maskPassword(buildDSN(c.cfg))).
 		Int("max_conns", c.cfg.MaxConn).
@@ -171,6 +173,8 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		case <-c.drain:
+			return nil, errors.New("client closed")
 		case <-time.After(backoff):
 		}
 	}
@@ -306,9 +310,9 @@ type errBatchResults struct {
 }
 
 func (e errBatchResults) Exec() (pgconn.CommandTag, error) { return pgconn.CommandTag{}, e.err }
-func (e errBatchResults) Query() (pgx.Rows, error)          { return nil, e.err }
-func (e errBatchResults) QueryRow() pgx.Row                 { return errRow{e.err} }
-func (e errBatchResults) Close() error                      { return e.err }
+func (e errBatchResults) Query() (pgx.Rows, error)         { return nil, e.err }
+func (e errBatchResults) QueryRow() pgx.Row                { return errRow{e.err} }
+func (e errBatchResults) Close() error                     { return e.err }
 
 func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc, err := pgxpool.ParseConfig(buildDSN(c.cfg))
@@ -379,23 +383,25 @@ func (c *Client) Close() error {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 
+	closedChan := make(chan struct{})
+	go func() {
+		pool.Close()
+		close(closedChan)
+	}()
+
 	for {
 		select {
+		case <-closedChan:
+			c.log.Info().
+				Dur("uptime", time.Since(c.started)).
+				Int64("total_reconnects", c.reconnect.Load()).
+				Msg("PGXClient gracefully shut down")
+			return nil
 		case <-timeout:
 			c.log.Warn().Msg("Shutdown timeout — abandoning pool (connections may leak)")
-			// Run in a goroutine to prevent Client.Close() from blocking forever
-			go pool.Close()
 			return nil
 		case <-ticker.C:
 			stat := pool.Stat()
-			if stat.AcquiredConns() == 0 {
-				pool.Close()
-				c.log.Info().
-					Dur("uptime", time.Since(c.started)).
-					Int64("total_reconnects", c.reconnect.Load()).
-					Msg("PGXClient gracefully shut down")
-				return nil
-			}
 			c.log.Debug().
 				Int32("acquired", stat.AcquiredConns()).
 				Int32("idle", stat.IdleConns()).
@@ -406,14 +412,13 @@ func (c *Client) Close() error {
 
 // Metrics returns a struct with functions for exposing metrics (Prometheus-ready).
 func (c *Client) Metrics() Metrics {
-	s := c.safeStat()
 	return Metrics{
 		ReconnectsTotal:   func() float64 { return float64(c.reconnect.Load()) },
-		PoolTotalConns:    func() float64 { return float64(s.TotalConns()) },
-		PoolIdleConns:     func() float64 { return float64(s.IdleConns()) },
-		PoolAcquiredConns: func() float64 { return float64(s.AcquiredConns()) },
+		PoolTotalConns:    func() float64 { s := c.safeStat(); return float64(s.TotalConns()) },
+		PoolIdleConns:     func() float64 { s := c.safeStat(); return float64(s.IdleConns()) },
+		PoolAcquiredConns: func() float64 { s := c.safeStat(); return float64(s.AcquiredConns()) },
 		PoolHealth: func() float64 {
-			if c.isHealthy() {
+			if c.healthy.Load() {
 				return 1.0
 			}
 			return 0.0
@@ -445,6 +450,7 @@ func (c *Client) monitor() {
 			if newPool, err := c.createPoolWithRetry(context.Background()); err == nil {
 				old := c.Pool()
 				c.setPool(newPool)
+				c.healthy.Store(true)
 				if old != nil {
 					go func(p *pgxpool.Pool) {
 						time.Sleep(5 * time.Second)
@@ -461,11 +467,15 @@ func (c *Client) monitor() {
 func (c *Client) isHealthy() bool {
 	p := c.Pool()
 	if p == nil {
+		c.healthy.Store(false)
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return p.Ping(ctx) == nil
+
+	ok := p.Ping(ctx) == nil
+	c.healthy.Store(ok)
+	return ok
 }
 
 func (c *Client) safeStat() pgxpool.Stat {

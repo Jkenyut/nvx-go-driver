@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -16,6 +17,7 @@ const (
 	ActionAck Action = iota
 	ActionNackRequeue
 	ActionNackDiscard
+	ActionNone
 )
 
 type HandlerFunc func(
@@ -36,10 +38,11 @@ type Consumer struct {
 	ch *amqp.Channel
 
 	consumerTag string
-	activeMsgs  sync.WaitGroup
+	activeMsgs  atomic.Int64
 
 	done      chan struct{}
 	wg        sync.WaitGroup
+	started   atomic.Bool
 	exclusive bool
 	noLocal   bool
 	noWait    bool
@@ -100,6 +103,13 @@ func (c *Consumer) Start(
 	ctx context.Context,
 	handler HandlerFunc,
 ) {
+
+	if !c.started.CompareAndSwap(false, true) {
+		if c.client != nil && c.client.log != nil {
+			c.client.log.Warn().Str("queue", c.queue).Msg("Consumer Start() ignored: already started")
+		}
+		return
+	}
 
 	c.wg.Add(1)
 
@@ -220,27 +230,26 @@ func (c *Consumer) consume(
 		case <-ctx.Done():
 			return nil
 
-		case <-c.done:
-			return nil
-
 		case msg, ok := <-msgs:
 
 			if !ok {
-				return errors.New(
-					"delivery channel closed",
-				)
+				select {
+				case <-c.done:
+					return nil
+				default:
+					return errors.New("delivery channel closed")
+				}
 			}
 
 			c.activeMsgs.Add(1)
 			func() {
-				defer c.activeMsgs.Done()
+				defer c.activeMsgs.Add(-1)
 
 				defer func() {
-
-					if recover() != nil {
-
+					if r := recover(); r != nil {
 						c.client.log.Error().
 							Str("queue", c.queue).
+							Interface("panic", r).
 							Msg("Consumer panic recovered")
 
 						if !c.autoAck {
@@ -259,6 +268,8 @@ func (c *Consumer) consume(
 						_ = msg.Nack(false, true)
 					case ActionNackDiscard:
 						_ = msg.Nack(false, false)
+					case ActionNone:
+						// User handles Ack/Nack manually
 					default:
 						// Safe fallback: Discard on unknown action
 						c.client.log.Warn().
@@ -285,36 +296,56 @@ func (c *Consumer) consume(
 
 func (c *Consumer) Close() {
 
+	c.lock.Lock()
+
 	select {
 	case <-c.done:
+		c.lock.Unlock()
+		return
 	default:
 		close(c.done)
 	}
 
-	c.lock.RLock()
 	ch := c.ch
 	tag := c.consumerTag
-	c.lock.RUnlock()
+	c.lock.Unlock()
 
 	if ch != nil && !ch.IsClosed() {
 		_ = ch.Cancel(tag, false)
 
-		doneWait := make(chan struct{})
-		go func() {
-			c.activeMsgs.Wait()
-			close(doneWait)
-		}()
+		timeout := time.After(10 * time.Second)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
 
-		select {
-		case <-doneWait:
-		case <-time.After(10 * time.Second):
-			if c.client != nil && c.client.log != nil {
-				c.client.log.Warn().Str("queue", c.queue).Msg("Consumer graceful shutdown timeout, forcing channel close")
+	waitLoop:
+		for {
+			if c.activeMsgs.Load() == 0 {
+				break waitLoop
+			}
+			select {
+			case <-timeout:
+				if c.client != nil && c.client.log != nil {
+					c.client.log.Warn().Str("queue", c.queue).Msg("Consumer graceful shutdown timeout, forcing channel close")
+				}
+				break waitLoop
+			case <-ticker.C:
 			}
 		}
 
 		_ = ch.Close()
 	}
 
-	c.wg.Wait()
+	waitDone := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+		if c.client != nil && c.client.log != nil {
+			c.client.log.Error().Str("queue", c.queue).Msg("Consumer Close() forced exit: goroutine leaked due to hung handler")
+		}
+	}
 }
