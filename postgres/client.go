@@ -48,6 +48,9 @@ import (
 var (
 	passwordRegex        = regexp.MustCompile(`://([^:@/]+):([^@/]+)@`)
 	keywordPasswordRegex = regexp.MustCompile(`(?i)(^|\s)(password|pass|pwd)=('[^']*'|"[^"]*"|\S*)`)
+
+	// ErrClientClosed is returned when an operation is attempted on a closed or uninitialized client.
+	ErrClientClosed = errors.New("database client is closed or not initialized")
 )
 
 // Client wraps pgxpool.Pool with auto-reconnect, health monitoring,
@@ -55,7 +58,7 @@ var (
 type Client struct {
 	pool      atomic.Value // stores *pgxpool.Pool
 	cfg       config.SQLConfig
-	closed    uint32
+	closed    atomic.Bool
 	started   time.Time
 	drain     chan struct{}
 	reconnect atomic.Int64 // reconnect counter
@@ -128,7 +131,7 @@ func (c *Client) connectInitial() error {
 	if err != nil {
 		return err
 	}
-	c.setPool(pool)
+	c.setPool(pool, false)
 	c.healthy.Store(true)
 	c.log.Info().
 		Str("dsn", maskPassword(buildDSN(c.cfg))).
@@ -141,7 +144,7 @@ func (c *Client) connectInitial() error {
 // Pool returns the current active *pgxpool.Pool.
 // Returns nil if the client is closed or no pool is available.
 func (c *Client) Pool() *pgxpool.Pool {
-	if atomic.LoadUint32(&c.closed) == 1 {
+	if c.closed.Load() {
 		return nil
 	}
 	if p := c.pool.Load(); p != nil {
@@ -190,14 +193,14 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 
 // IsClosed reports whether the client has been closed.
 func (c *Client) IsClosed() bool {
-	return atomic.LoadUint32(&c.closed) == 1
+	return c.closed.Load()
 }
 
 // Exec executes a SQL command (INSERT, UPDATE, DELETE) and returns the tag.
 func (c *Client) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return pgconn.CommandTag{}, errors.New("database client is closed or not initialized")
+		return pgconn.CommandTag{}, ErrClientClosed
 	}
 	return pool.Exec(ctx, sql, args...)
 }
@@ -206,7 +209,7 @@ func (c *Client) Exec(ctx context.Context, sql string, args ...any) (pgconn.Comm
 func (c *Client) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return nil, errors.New("database client is closed or not initialized")
+		return nil, ErrClientClosed
 	}
 	return pool.Query(ctx, sql, args...)
 }
@@ -215,7 +218,7 @@ func (c *Client) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, 
 func (c *Client) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	pool := c.Pool()
 	if pool == nil {
-		return errRow{errors.New("database client is closed or not initialized")}
+		return errRow{ErrClientClosed}
 	}
 	return pool.QueryRow(ctx, sql, args...)
 }
@@ -224,7 +227,7 @@ func (c *Client) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row 
 func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return nil, errors.New("database client is closed or not initialized")
+		return nil, ErrClientClosed
 	}
 	return pool.Begin(ctx)
 }
@@ -233,7 +236,7 @@ func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
 func (c *Client) BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return nil, errors.New("database client is closed or not initialized")
+		return nil, ErrClientClosed
 	}
 	return pool.BeginTx(ctx, txOptions)
 }
@@ -263,7 +266,7 @@ func (c *Client) RunInTx(ctx context.Context, fn func(pgx.Tx) error) error {
 func (c *Client) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
 	pool := c.Pool()
 	if pool == nil {
-		return errBatchResults{errors.New("database client is closed or not initialized")}
+		return errBatchResults{ErrClientClosed}
 	}
 	return pool.SendBatch(ctx, b)
 }
@@ -272,7 +275,7 @@ func (c *Client) SendBatch(ctx context.Context, b *pgx.Batch) pgx.BatchResults {
 func (c *Client) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return 0, errors.New("database client is closed or not initialized")
+		return 0, ErrClientClosed
 	}
 	return pool.CopyFrom(ctx, tableName, columnNames, rowSrc)
 }
@@ -282,7 +285,7 @@ func (c *Client) CopyFrom(ctx context.Context, tableName pgx.Identifier, columnN
 func (c *Client) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
 	pool := c.Pool()
 	if pool == nil {
-		return nil, errors.New("database client is closed or not initialized")
+		return nil, ErrClientClosed
 	}
 	return pool.Acquire(ctx)
 }
@@ -291,7 +294,7 @@ func (c *Client) Acquire(ctx context.Context) (*pgxpool.Conn, error) {
 func (c *Client) Ping(ctx context.Context) error {
 	pool := c.Pool()
 	if pool == nil {
-		return errors.New("database client is closed or not initialized")
+		return ErrClientClosed
 	}
 	return pool.Ping(ctx)
 }
@@ -373,7 +376,7 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 //   - Waits up to 30 seconds for acquired connections to be released
 //   - Closes the pool
 func (c *Client) Close() error {
-	if !atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+	if !c.closed.CompareAndSwap(false, true) {
 		return nil // already closed
 	}
 
@@ -435,9 +438,11 @@ func (c *Client) Metrics() Metrics {
 	}
 }
 
-func (c *Client) setPool(p *pgxpool.Pool) {
+func (c *Client) setPool(p *pgxpool.Pool, isReconnect bool) {
 	c.pool.Store(p)
-	c.reconnect.Add(1)
+	if isReconnect {
+		c.reconnect.Add(1)
+	}
 }
 
 func (c *Client) monitor() {
@@ -457,7 +462,7 @@ func (c *Client) monitor() {
 			c.log.Warn().Msg("Pool unhealthy → reconnecting")
 			if newPool, err := c.createPoolWithRetry(context.Background()); err == nil {
 				old := c.Pool()
-				c.setPool(newPool)
+				c.setPool(newPool, true)
 				c.healthy.Store(true)
 				if old != nil {
 					go func(p *pgxpool.Pool) {
@@ -514,17 +519,15 @@ func maskPassword(dsn string) string {
 	return keywordPasswordRegex.ReplaceAllString(masked, "$1$2=****")
 }
 
-// jitter returns a random offset ±50% of the input duration.
-// It never returns negative values.
+// jitter returns a random duration between 0 and d.
 func jitter(d time.Duration) time.Duration {
 	if d <= 100*time.Millisecond {
 		return 0
 	}
-	maxJitter := int64(d / 2)
-	if maxJitter == 0 {
+	maxJitter := int64(d)
+	if maxJitter <= 0 {
 		return 0
 	}
-	j, _ := rand.Int(rand.Reader, big.NewInt(maxJitter*2))
-	offset := time.Duration(j.Int64() - maxJitter)
-	return offset
+	j, _ := rand.Int(rand.Reader, big.NewInt(maxJitter))
+	return time.Duration(j.Int64())
 }

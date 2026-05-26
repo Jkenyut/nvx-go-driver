@@ -316,14 +316,14 @@ func (c *Consumer) consume(
 	}
 }
 
-func (c *Consumer) Close() {
+func (c *Consumer) Close() error {
 
 	c.lock.Lock()
 
 	select {
 	case <-c.done:
 		c.lock.Unlock()
-		return
+		return nil
 	default:
 		close(c.done)
 	}
@@ -370,4 +370,6 @@ func (c *Consumer) Close() {
 			c.client.log.Error().Str("queue", c.queue).Msg("Consumer Close() forced exit: goroutine leaked due to hung handler")
 		}
 	}
+
+	return nil
 }

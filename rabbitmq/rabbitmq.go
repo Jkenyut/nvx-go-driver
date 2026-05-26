@@ -46,7 +46,7 @@ func NewClient(
 		)
 	}
 
-	cfg = applyDefaults(cfg)
+	cfg = *cfg.WithDefaults()
 
 	client := &Client{
 		cfg:  cfg,
@@ -67,41 +67,6 @@ func NewClient(
 	}()
 
 	return client, nil
-}
-
-func applyDefaults(
-	cfg config.RabbitMQConfig,
-) config.RabbitMQConfig {
-
-	if cfg.Host == "" {
-		cfg.Host = "127.0.0.1"
-	}
-
-	if cfg.Port == 0 {
-		cfg.Port = 5672
-	}
-
-	if cfg.Username == "" {
-		cfg.Username = "guest"
-	}
-
-	if cfg.Password == "" {
-		cfg.Password = "guest"
-	}
-
-	if cfg.ReconnectDuration == 0 {
-		cfg.ReconnectDuration = 5
-	}
-
-	if cfg.ConnectTimeout == 0 {
-		cfg.ConnectTimeout = 10
-	}
-
-	if cfg.PublishTimeout == 0 {
-		cfg.PublishTimeout = 5
-	}
-
-	return cfg
 }
 
 func (r *Client) connectTimeout() time.Duration {

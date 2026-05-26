@@ -1,6 +1,6 @@
 module github.com/Jkenyut/nvx-go-driver
 
-go 1.25.4
+go 1.24.0
 
 require (
 	github.com/bytedance/sonic v1.15.1
