@@ -77,6 +77,13 @@ func LoadInto[T any](configFile string, c *T) error {
 
 // SetDefaults iterates over struct fields and sets values from 'default' tag.
 // It is exported to allow use on existing structs.
+//
+// Note: defaults are only applied to zero-value fields. This means:
+//   - An int field with value 0 will receive the default value
+//   - A bool field with value false will receive the default value
+//   - A string field with value "" will receive the default value
+//
+// If you need to explicitly set a field to its zero value, set it after calling SetDefaults.
 func SetDefaults(ptr interface{}, defaultTag string) error {
 	if reflect.TypeOf(ptr).Kind() != reflect.Ptr {
 		return fmt.Errorf("not a pointer")

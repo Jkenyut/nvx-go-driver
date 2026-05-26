@@ -13,6 +13,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// ErrClientNil is returned when an operation is attempted on a nil client.
+var ErrClientNil = errors.New("redis client is nil")
+
 // Client wraps go-redis client with observability, automatic reconnect,
 // and standard configuration.
 type Client struct {
@@ -65,7 +68,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 		return nil, errors.New("redis disabled in config")
 	}
 
-	cfg = applyDefaults(cfg)
+	cfg = *cfg.WithDefaults()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
@@ -139,40 +142,6 @@ func redisTLSConfig(cfg config.RedisConfig) *tls.Config {
 	}
 }
 
-func applyDefaults(cfg config.RedisConfig) config.RedisConfig {
-	if cfg.Host == "" {
-		cfg.Host = "127.0.0.1"
-	}
-	if cfg.Port == 0 {
-		cfg.Port = 6379
-	}
-	if cfg.PoolSize == 0 {
-		cfg.PoolSize = 10
-	}
-	if cfg.MinIdleConn == 0 {
-		cfg.MinIdleConn = 5
-	}
-	if cfg.MaxIdleConn == 0 {
-		cfg.MaxIdleConn = 15
-	}
-	if cfg.PoolTimeout == 0 {
-		cfg.PoolTimeout = 30
-	}
-	if cfg.ConnectTimeout == 0 {
-		cfg.ConnectTimeout = 5
-	}
-	if cfg.ConnMaxLife == 0 {
-		cfg.ConnMaxLife = 600
-	}
-	if cfg.StartInterval == 0 {
-		cfg.StartInterval = 2
-	}
-	if cfg.MaxError == 0 {
-		cfg.MaxError = 5
-	}
-	return cfg
-}
-
 // Client returns the underlying *redis.Client for direct usage.
 func (r *Client) Client() *redis.Client {
 	if r.client == nil {
@@ -184,7 +153,7 @@ func (r *Client) Client() *redis.Client {
 // Close gracefully closes the Redis client connection.
 func (r *Client) Close() error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
 	r.log.Info().Msg("Closing Redis client")
 	return r.client.Close()
@@ -194,7 +163,7 @@ func (r *Client) Close() error {
 // Useful for application health check endpoints.
 func (r *Client) Ping(ctx context.Context) error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
 	return r.client.Ping(ctx).Err()
 }
@@ -203,7 +172,7 @@ func (r *Client) Ping(ctx context.Context) error {
 // expiration of 0 means no expiration.
 func (r *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
 	return r.client.Set(ctx, key, value, expiration).Err()
 }
@@ -212,23 +181,27 @@ func (r *Client) Set(ctx context.Context, key string, value interface{}, expirat
 // Returns redis.Nil error if key does not exist.
 func (r *Client) Get(ctx context.Context, key string) (string, error) {
 	if r.client == nil {
-		return "", errors.New("redis client is nil")
+		return "", ErrClientNil
 	}
 	return r.client.Get(ctx, key).Result()
 }
 
 // Del executes a simplified Redis DEL command.
-func (r *Client) Del(ctx context.Context, key string) error {
+// Accepts one or more keys to delete.
+func (r *Client) Del(ctx context.Context, keys ...string) error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
-	return r.client.Del(ctx, key).Err()
+	if len(keys) == 0 {
+		return nil
+	}
+	return r.client.Del(ctx, keys...).Err()
 }
 
 // Exists checks if a key exists in Redis.
 func (r *Client) Exists(ctx context.Context, key string) (bool, error) {
 	if r.client == nil {
-		return false, errors.New("redis client is nil")
+		return false, ErrClientNil
 	}
 	n, err := r.client.Exists(ctx, key).Result()
 	return n > 0, err
@@ -238,7 +211,7 @@ func (r *Client) Exists(ctx context.Context, key string) (bool, error) {
 // Returns a negative duration if the key does not exist or has no expiration.
 func (r *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
 	if r.client == nil {
-		return 0, errors.New("redis client is nil")
+		return 0, ErrClientNil
 	}
 	return r.client.TTL(ctx, key).Result()
 }
@@ -247,7 +220,7 @@ func (r *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
 // Returns true if the key was set, false if it already existed.
 func (r *Client) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
 	if r.client == nil {
-		return false, errors.New("redis client is nil")
+		return false, ErrClientNil
 	}
 	return r.client.SetNX(ctx, key, value, expiration).Result()
 }
@@ -255,7 +228,7 @@ func (r *Client) SetNX(ctx context.Context, key string, value interface{}, expir
 // SetJSON marshals a value to JSON and stores it in Redis.
 func (r *Client) SetJSON(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
 	bytes, err := sonic.Marshal(value)
 	if err != nil {
@@ -267,7 +240,7 @@ func (r *Client) SetJSON(ctx context.Context, key string, value interface{}, exp
 // GetJSON retrieves a JSON string from Redis and unmarshals it into the dest pointer.
 func (r *Client) GetJSON(ctx context.Context, key string, dest interface{}) error {
 	if r.client == nil {
-		return errors.New("redis client is nil")
+		return ErrClientNil
 	}
 	val, err := r.client.Get(ctx, key).Bytes()
 	if err != nil {

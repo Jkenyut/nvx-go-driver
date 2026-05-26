@@ -1,6 +1,6 @@
 # nvx-go-driver
 
-![Go Version](https://img.shields.io/badge/go-1.21%2B-blue)
+![Go Version](https://img.shields.io/badge/go-1.26%2B-blue)
 ![License](https://img.shields.io/badge/license-private-red)
 
 **nvx-go-driver** is a production-ready driver wrapper for Go, designed for high-availability microservices. It provides robust clients for PostgreSQL, Redis, RabbitMQ, and Kafka with built-in observability, zero-downtime reconnection, and structured logging.

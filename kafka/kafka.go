@@ -17,6 +17,9 @@ import (
 	"github.com/segmentio/kafka-go/sasl/scram"
 )
 
+// ErrClientClosed is returned when an operation is attempted on a closed client.
+var ErrClientClosed = errors.New("kafka client is closed")
+
 // SmartBalancer balances keyed messages by Murmur2 (Java compatible),
 // and keyless by LeastBytes to prevent partition 0 hotspotting.
 type SmartBalancer struct {
@@ -62,7 +65,7 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 		return nil, errors.New("kafka disabled in config")
 	}
 
-	cfg = applyDefaults(cfg)
+	cfg = *cfg.WithDefaults()
 
 	var mechanism sasl.Mechanism
 	if cfg.Username != "" {
@@ -133,19 +136,6 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 	}, nil
 }
 
-func applyDefaults(cfg config.KafkaConfig) config.KafkaConfig {
-	if cfg.Host == "" {
-		cfg.Host = "127.0.0.1:9092"
-	}
-	if cfg.Username != "" && cfg.SecurityProtocol == "" {
-		cfg.SecurityProtocol = "SASL_SSL"
-	}
-	if cfg.Username == "" && cfg.SecurityProtocol == "" {
-		cfg.SecurityProtocol = "PLAINTEXT"
-	}
-	return cfg
-}
-
 // NewWriter creates a new Kafka Writer (Producer).
 // Writers in kafka-go automatically handle retries, connection drops, and load balancing.
 func (k *Client) NewWriter() *kafka.Writer {
@@ -182,7 +172,7 @@ func (k *Client) NewReader(topic string, groupID string) *kafka.Reader {
 // It accepts a 'key' for partition ordering guarantees.
 func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []byte) error {
 	if k.closed.Load() == 1 {
-		return errors.New("kafka client is closed")
+		return ErrClientClosed
 	}
 
 	k.writerLock.RLock()
@@ -193,7 +183,7 @@ func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []
 		k.writerLock.Lock()
 		if k.closed.Load() == 1 {
 			k.writerLock.Unlock()
-			return errors.New("kafka client is closed")
+			return ErrClientClosed
 		}
 		if k.writer == nil {
 			k.writer = k.NewWriter()

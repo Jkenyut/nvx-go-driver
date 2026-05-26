@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestApplyDefaults(t *testing.T) {
+func TestWithDefaults(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    config.RabbitMQConfig
@@ -45,7 +45,8 @@ func TestApplyDefaults(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := applyDefaults(tt.input)
+			input := tt.input
+			got := input.WithDefaults()
 			if got.Host != tt.expected.Host {
 				t.Errorf("Host = %v, want %v", got.Host, tt.expected.Host)
 			}
