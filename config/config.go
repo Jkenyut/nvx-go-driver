@@ -83,6 +83,10 @@ type SQLConfig struct {
 	// AutoReconnect automatically reconnects on connection failure
 	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
 
+	// ApplicationName identifies this service in pg_stat_activity.
+	// Defaults to "nvx-go-driver" if empty.
+	ApplicationName string `yaml:"application_name" json:"application_name" default:""`
+
 	// UseMock enables mock database implementation
 	// Useful for testing and local development
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`

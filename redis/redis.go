@@ -24,14 +24,16 @@ type Client struct {
 	log    *zerolog.Logger
 }
 
-// Metrics provides Prometheus-compatible metric functions.
+// Metrics provides Prometheus-compatible lazy metric functions.
+// Each field is a function that returns the current value when called,
+// ensuring Prometheus scrapers always get up-to-date data.
 type Metrics struct {
-	HitsTotal     float64
-	MissesTotal   float64
-	TimeoutsTotal float64
-	TotalConns    float64
-	IdleConns     float64
-	StaleConns    float64
+	HitsTotal     func() float64
+	MissesTotal   func() float64
+	TimeoutsTotal func() float64
+	TotalConns    func() float64
+	IdleConns     func() float64
+	StaleConns    func() float64
 }
 
 // NewClient creates a new Redis client with the provided configuration.
@@ -253,18 +255,25 @@ func (r *Client) GetJSON(ctx context.Context, key string, dest interface{}) erro
 }
 
 // Metrics returns observability metrics for the Redis pool.
+// Each field is a lazy function — call it to get the current value.
 func (r *Client) Metrics() Metrics {
 	if r.client == nil {
-		return Metrics{}
+		return Metrics{
+			HitsTotal:     func() float64 { return 0 },
+			MissesTotal:   func() float64 { return 0 },
+			TimeoutsTotal: func() float64 { return 0 },
+			TotalConns:    func() float64 { return 0 },
+			IdleConns:     func() float64 { return 0 },
+			StaleConns:    func() float64 { return 0 },
+		}
 	}
-	stats := r.client.PoolStats()
 	return Metrics{
-		HitsTotal:     float64(stats.Hits),
-		MissesTotal:   float64(stats.Misses),
-		TimeoutsTotal: float64(stats.Timeouts),
-		TotalConns:    float64(stats.TotalConns),
-		IdleConns:     float64(stats.IdleConns),
-		StaleConns:    float64(stats.StaleConns),
+		HitsTotal:     func() float64 { return float64(r.client.PoolStats().Hits) },
+		MissesTotal:   func() float64 { return float64(r.client.PoolStats().Misses) },
+		TimeoutsTotal: func() float64 { return float64(r.client.PoolStats().Timeouts) },
+		TotalConns:    func() float64 { return float64(r.client.PoolStats().TotalConns) },
+		IdleConns:     func() float64 { return float64(r.client.PoolStats().IdleConns) },
+		StaleConns:    func() float64 { return float64(r.client.PoolStats().StaleConns) },
 	}
 }
 

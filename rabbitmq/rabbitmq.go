@@ -143,8 +143,15 @@ func (r *Client) connect() error {
 	return nil
 }
 
+func (r *Client) reconnectDuration() time.Duration {
+	if r.cfg.ReconnectDuration <= 0 {
+		return time.Second
+	}
+	return time.Duration(r.cfg.ReconnectDuration) * time.Second
+}
+
 func (r *Client) reconnectLoop() {
-	backoff := time.Second
+	backoff := r.reconnectDuration()
 	for {
 
 		select {
@@ -215,7 +222,7 @@ func (r *Client) reconnectLoop() {
 			errs := r.connect()
 			if errs == nil {
 
-				backoff = time.Second
+				backoff = r.reconnectDuration()
 
 				r.log.Info().
 					Msg("RabbitMQ reconnected")
