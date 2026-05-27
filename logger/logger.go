@@ -28,6 +28,7 @@ package logger
 import (
 	"io"
 	"os"
+	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
 	"github.com/rs/zerolog"
@@ -60,7 +61,7 @@ func InitFromConfig(cfg config.Listener) {
 	}
 
 	// Use Unix seconds internally, but display in human format via ConsoleWriter
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.TimeFieldFormat = time.RFC3339
 
 	// Respect LOG_LEVEL environment variable if set
 	if levelStr := os.Getenv("LOG_LEVEL"); levelStr != "" {
