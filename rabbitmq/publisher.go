@@ -275,7 +275,8 @@ func (p *Publisher) Publish(
 	var lastErr error
 
 	if msg.MessageId == "" {
-		msg.MessageId = uuid.NewString()
+		v7, _ := uuid.NewV7()
+		msg.MessageId = v7.String()
 	}
 	if msg.Timestamp.IsZero() {
 		msg.Timestamp = time.Now().UTC()
