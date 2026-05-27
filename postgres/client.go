@@ -250,13 +250,13 @@ func (c *Client) RunInTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			tx.Rollback(ctx)
-			panic(p) // re-panic after rollback
+			_ = tx.Rollback(ctx) // best-effort: error is intentionally ignored after panic
+			panic(p)             // re-panic after rollback
 		}
 	}()
 
 	if err := fn(tx); err != nil {
-		tx.Rollback(ctx)
+		_ = tx.Rollback(ctx) // best-effort: original error takes precedence
 		return err
 	}
 	return tx.Commit(ctx)
@@ -341,7 +341,11 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 		pc.ConnConfig.RuntimeParams = make(map[string]string)
 	}
 	if _, ok := pc.ConnConfig.RuntimeParams["application_name"]; !ok {
-		pc.ConnConfig.RuntimeParams["application_name"] = "nvx-go-driver"
+		appName := c.cfg.ApplicationName
+		if appName == "" {
+			appName = "nvx-go-driver"
+		}
+		pc.ConnConfig.RuntimeParams["application_name"] = appName
 	}
 
 	if c.beforeConnect != nil {

@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -53,13 +52,13 @@ func LoadInto[T any](configFile string, c *T) error {
 			return fmt.Errorf("failed to marshal config: %w", err)
 		}
 
-		if err := os.WriteFile(configFile, newData, 0644); err != nil {
-			log.Printf("Warning: Failed to write config file: %v", err)
+		if err := os.WriteFile(configFile, newData, 0600); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", err)
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("error checking config file: %w", err)
 	} else {
-		log.Printf("Config file not found, creating default at %s", configFile)
+		_, _ = fmt.Fprintf(os.Stderr, "[config] config file not found, creating default at %s\n", configFile)
 
 		// 3. Write Config Back (Persist Defaults if file didn't exist)
 		data, err := yaml.Marshal(c)
@@ -67,8 +66,8 @@ func LoadInto[T any](configFile string, c *T) error {
 			return fmt.Errorf("failed to marshal config: %w", err)
 		}
 
-		if err := os.WriteFile(configFile, data, 0644); err != nil {
-			log.Printf("Warning: Failed to write config file: %v", err)
+		if err := os.WriteFile(configFile, data, 0600); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", err)
 		}
 	}
 
@@ -252,8 +251,8 @@ func setField(value reflect.Value, defaultVal string) error {
 func SetValueFromEnv(pathSecret, env string, fallback string) string {
 	data, err := os.ReadFile(pathSecret)
 	if err != nil {
-		if os.Getenv(env) != "" {
-			return os.Getenv(env)
+		if v := os.Getenv(env); v != "" {
+			return v
 		}
 		return fallback
 	}
