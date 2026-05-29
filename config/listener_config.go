@@ -1,5 +1,6 @@
 package config
 
+// Environment returns the environment string.
 func (l *Listener) Environment() string {
 	if l.Env != "" {
 		return l.Env
@@ -7,6 +8,7 @@ func (l *Listener) Environment() string {
 	return "development"
 }
 
+// ServiceName returns the name of the service.
 func (l *Listener) ServiceName() string {
 	if l.NameService != "" {
 		return l.NameService

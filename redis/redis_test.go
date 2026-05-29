@@ -84,7 +84,7 @@ func TestNewClient_Disabled(t *testing.T) {
 	logger := zerolog.Nop()
 	cfg := config.RedisConfig{Enable: false}
 
-	client, err := NewClient(cfg, &logger)
+	client, err := NewClient(&cfg, &logger)
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}

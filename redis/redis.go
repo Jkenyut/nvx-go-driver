@@ -1,3 +1,4 @@
+// Package redis provides a Redis client implementation.
 package redis
 
 import (
@@ -20,7 +21,7 @@ var ErrClientNil = errors.New("redis client is nil")
 // and standard configuration.
 type Client struct {
 	client *redis.Client
-	cfg    config.RedisConfig
+	cfg    *config.RedisConfig
 	log    *zerolog.Logger
 }
 
@@ -60,7 +61,7 @@ type Metrics struct {
 //	defer client.Close()
 //
 //	val, err := client.Client().Get(ctx, "key").Result()
-func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -70,7 +71,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 		return nil, errors.New("redis disabled in config")
 	}
 
-	cfg = *cfg.WithDefaults()
+	cfg = cfg.WithDefaults()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
@@ -118,7 +119,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 	}
 
 	if err != nil {
-		rdb.Close()
+		_ = rdb.Close()
 		return nil, fmt.Errorf("redis connection failed after %d attempts: %w", maxAttempts, err)
 	}
 
@@ -134,7 +135,7 @@ func NewClient(cfg config.RedisConfig, logger *zerolog.Logger) (*Client, error) 
 	}, nil
 }
 
-func redisTLSConfig(cfg config.RedisConfig) *tls.Config {
+func redisTLSConfig(cfg *config.RedisConfig) *tls.Config {
 	if !cfg.TLS {
 		return nil
 	}
@@ -277,6 +278,7 @@ func (r *Client) Metrics() Metrics {
 	}
 }
 
+// Nil returns the redis.Nil error.
 func (r *Client) Nil() redis.Error {
 	return redis.Nil
 }

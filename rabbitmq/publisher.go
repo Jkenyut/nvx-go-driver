@@ -10,6 +10,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// Publisher represents a RabbitMQ publisher.
 type Publisher struct {
 	client *Client
 
@@ -26,10 +27,10 @@ type Publisher struct {
 	wg   sync.WaitGroup
 }
 
+// NewPublisher creates a new publisher.
 func NewPublisher(
 	client *Client,
 ) (*Publisher, error) {
-
 	ch, err := client.NewChannel()
 	if err != nil {
 		return nil, err
@@ -97,11 +98,9 @@ func (p *Publisher) startConfirmListener(ch *amqp.Channel) {
 }
 
 func (p *Publisher) reconnectLoop() {
-
 	backoff := time.Second
 
 	for {
-
 		select {
 		case <-p.done:
 			return
@@ -113,7 +112,6 @@ func (p *Publisher) reconnectLoop() {
 		p.lock.RUnlock()
 
 		if ch == nil {
-
 			select {
 			case <-p.done:
 				return
@@ -154,7 +152,6 @@ func (p *Publisher) reconnectLoop() {
 		}
 
 		for {
-
 			select {
 			case <-p.done:
 				return
@@ -163,7 +160,6 @@ func (p *Publisher) reconnectLoop() {
 
 			newCh, e := p.client.NewChannel()
 			if e != nil {
-
 				p.client.log.Error().
 					Err(e).
 					Msg("Failed to recreate publisher channel")
@@ -183,7 +179,6 @@ func (p *Publisher) reconnectLoop() {
 
 			e = newCh.Confirm(false)
 			if e != nil {
-
 				_ = newCh.Close()
 
 				p.client.log.Error().
@@ -247,7 +242,6 @@ func (p *Publisher) reconnectLoop() {
 }
 
 func (p *Publisher) channel() (*amqp.Channel, error) {
-
 	p.lock.RLock()
 
 	ch := p.ch
@@ -263,6 +257,7 @@ func (p *Publisher) channel() (*amqp.Channel, error) {
 	return ch, nil
 }
 
+// Publish publishes a message.
 func (p *Publisher) Publish(
 	ctx context.Context,
 	exchange string,
@@ -271,7 +266,6 @@ func (p *Publisher) Publish(
 	mandatory bool,
 	immediate bool,
 ) error {
-
 	var lastErr error
 
 	if msg.MessageId == "" {
@@ -344,7 +338,6 @@ func (p *Publisher) publishOnce(
 		immediate,
 		msg,
 	)
-
 	if err != nil {
 		p.pendingConfirms.Delete(seqNo)
 		p.publishLock.Unlock()
@@ -367,8 +360,8 @@ func (p *Publisher) publishOnce(
 	}
 }
 
+// Close gracefully closes the publisher.
 func (p *Publisher) Close() error {
-
 	p.lock.Lock()
 
 	select {

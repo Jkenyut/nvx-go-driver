@@ -1,4 +1,4 @@
-// Package database provides a production-ready, zero-downtime PostgreSQL client
+// Package postgres provides a production-ready, zero-downtime PostgreSQL client
 // wrapper built on top of pgx/v5 and pgxpool.
 //
 // PGXClient is designed for high-availability systems (microservices, fintech,
@@ -57,7 +57,7 @@ var (
 // graceful shutdown, and observability features.
 type Client struct {
 	pool      atomic.Value // stores *pgxpool.Pool
-	cfg       config.SQLConfig
+	cfg       *config.SQLConfig
 	closed    atomic.Bool
 	started   time.Time
 	drain     chan struct{}
@@ -85,13 +85,13 @@ type Metrics struct {
 
 // NewClient creates a new Client with default hook (nil AfterConnect).
 // It applies defaults, connects to the database, and starts background monitoring.
-func NewClient(cfg config.SQLConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.SQLConfig, logger *zerolog.Logger) (*Client, error) {
 	return NewClientWithHook(cfg, logger, nil, nil)
 }
 
 // NewClientWithHook creates a new Client with optional AfterConnect hook.
 // The hook is called for every new physical connection (useful for SET commands).
-func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger,
+func NewClientWithHook(cfg *config.SQLConfig, logger *zerolog.Logger,
 	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
 	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
 ) (*Client, error) {
@@ -100,7 +100,7 @@ func NewClientWithHook(cfg config.SQLConfig, logger *zerolog.Logger,
 		logger = &nop
 	}
 
-	cfg = *cfg.WithDefaults()
+	cfg = cfg.WithDefaults()
 	if !cfg.Enable {
 		return nil, errors.New("database disabled in config")
 	}
@@ -313,7 +313,7 @@ type errRow struct {
 	err error
 }
 
-func (e errRow) Scan(dest ...any) error { return e.err }
+func (e errRow) Scan(_ ...any) error { return e.err }
 
 type errBatchResults struct {
 	err error
@@ -321,7 +321,7 @@ type errBatchResults struct {
 
 func (e errBatchResults) Exec() (pgconn.CommandTag, error) { return pgconn.CommandTag{}, e.err }
 func (e errBatchResults) Query() (pgx.Rows, error)         { return nil, e.err }
-func (e errBatchResults) QueryRow() pgx.Row                { return errRow{e.err} }
+func (e errBatchResults) QueryRow() pgx.Row                { return errRow(e) }
 func (e errBatchResults) Close() error                     { return e.err }
 
 func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
@@ -357,7 +357,7 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 
 	// Simple validation: reject closed connections (fast, no extra ping)
-	pc.PrepareConn = func(ctx context.Context, conn *pgx.Conn) (bool, error) {
+	pc.PrepareConn = func(_ context.Context, conn *pgx.Conn) (bool, error) {
 		return !conn.IsClosed(), nil
 	}
 
@@ -502,7 +502,7 @@ func (c *Client) safeStat() pgxpool.Stat {
 	return pgxpool.Stat{}
 }
 
-func buildDSN(cfg config.SQLConfig) string {
+func buildDSN(cfg *config.SQLConfig) string {
 	if cfg.Connection != "" {
 		return cfg.Connection
 	}
