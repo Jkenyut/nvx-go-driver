@@ -32,6 +32,7 @@ import (
 
 	"github.com/Jkenyut/nvx-go-driver/config"
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/diode"
 )
 
 // InitFromConfig initializes the global zerolog logger using values from the
@@ -60,7 +61,7 @@ func InitFromConfig(cfg config.Listener) {
 		}
 	}
 
-	// Use Unix seconds internally, but display in human format via ConsoleWriter
+	// Use RFC3339 seconds internally, but display in human format via ConsoleWriter
 	zerolog.TimeFieldFormat = time.RFC3339
 
 	// Respect LOG_LEVEL environment variable if set
@@ -77,7 +78,9 @@ func InitFromConfig(cfg config.Listener) {
 		}
 	}
 
-	log := zerolog.New(writer).
+	wr := diode.NewWriter(writer, 1000, 10*time.Millisecond, func(_ int) {})
+
+	log := zerolog.New(wr).
 		With().
 		Timestamp().
 		Caller().
