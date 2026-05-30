@@ -19,11 +19,11 @@
 /build/
 /tmp/
 
-# Go workspace file (jika pakai multi-module)
+# Go workspace file (if using multi-module)
 go.work
 go.work.sum
 
-# Dependency cache & vendor (opsional, uncomment jika pakai vendor)
+# Dependency cache & vendor (optional, uncomment if using vendor)
 # vendor/
 
 # Coverage & profiling
@@ -43,7 +43,7 @@ coverage.*
 out/
 cmake-build-*/
 
-# User-specific (paling sering berubah & sensitif)
+# User-specific (most frequently changed & sensitive)
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
@@ -61,7 +61,7 @@ cmake-build-*/
 .idea/**/httpRequests/
 .idea/**/sonarlint/
 
-# Gradle/Maven auto-import (jika tidak dipakai, tetap di-ignore)
+# Gradle/Maven auto-import (ignore even if unused)
 .idea/**/gradle.xml
 .idea/**/libraries
 .idea/artifacts/
@@ -70,9 +70,9 @@ cmake-build-*/
 .idea/modules.xml
 
 # =============================================================================
-# CONFIG & SECRETS (penting banget!)
+# CONFIG & SECRETS (very important!)
 # =============================================================================
-# Config lokal (jangan pernah commit config asli!)
+# Local config (never commit original configs!)
 config.yaml
 config.yml
 config.local.*
@@ -84,7 +84,7 @@ secrets/
 *.key
 *.crt
 
-# Tapi tetap commit contoh config!
+# But keep the example config!
 # !config.example.yaml
 # !config.example.yml
 
@@ -110,7 +110,7 @@ $RECYCLE.BIN/
 *.swo
 *~
 
-# VS Code (kalau ada yang pakai)
+# VS Code (if anyone uses it)
 .vscode/
 
 # =============================================================================
@@ -130,9 +130,9 @@ temp/
 *.dmp
 
 # =============================================================================
-# ALLOWED (jangan di-ignore)
+# ALLOWED (do not ignore)
 # =============================================================================
-# Pastikan file contoh config tetap masuk git
+# Ensure config example files remain in git
 !config.example.yaml
 !config.example.yml
 !.env.example
