@@ -14,7 +14,7 @@ func TestNewClient_Disabled(t *testing.T) {
 		Enable: false,
 	}
 
-	client, err := NewClient(cfg, &logger)
+	client, err := NewClient(&cfg, &logger)
 	if err == nil {
 		t.Error("expected error when config is disabled, got nil")
 	}
@@ -63,7 +63,7 @@ func TestBuildDSN(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildDSN(tt.cfg)
+			got := buildDSN(&tt.cfg)
 			if got != tt.expected {
 				t.Errorf("buildDSN() = %v, want %v", got, tt.expected)
 			}
@@ -81,7 +81,7 @@ func TestBuildDSN_EscapesURLParts(t *testing.T) {
 		Options:  "sslmode=require",
 	}
 
-	got := buildDSN(cfg)
+	got := buildDSN(&cfg)
 	expected := "postgres://user%40example:pa%3Ass%40word@localhost:5432/db%2Fname?sslmode=require"
 
 	if got != expected {

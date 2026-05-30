@@ -1,3 +1,4 @@
+// Package kafka provides a Kafka client implementation.
 package kafka
 
 import (
@@ -27,6 +28,7 @@ type SmartBalancer struct {
 	LeastBytes kafka.LeastBytes
 }
 
+// Balance returns the partition for the given message.
 func (b *SmartBalancer) Balance(msg kafka.Message, partitions ...int) int {
 	if len(msg.Key) > 0 {
 		return b.Murmur2.Balance(msg, partitions...)
@@ -37,7 +39,7 @@ func (b *SmartBalancer) Balance(msg kafka.Message, partitions ...int) int {
 // Client acts as a factory for creating Producers (Writers) and Consumers (Readers)
 // with consistent configuration and logging.
 type Client struct {
-	cfg     config.KafkaConfig
+	cfg     *config.KafkaConfig
 	dialer  *kafka.Dialer
 	log     *zerolog.Logger
 	brokers []string
@@ -55,7 +57,7 @@ type Client struct {
 //   - Host: "127.0.0.1:9092" (if empty)
 //   - SecurityProtocol: "SASL_SSL" (if username set but protocol empty)
 //   - Mechanism: "PLAIN"
-func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -65,7 +67,7 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 		return nil, errors.New("kafka disabled in config")
 	}
 
-	cfg = *cfg.WithDefaults()
+	cfg = cfg.WithDefaults()
 
 	var mechanism sasl.Mechanism
 	if cfg.Username != "" {
@@ -112,7 +114,7 @@ func NewClient(cfg config.KafkaConfig, logger *zerolog.Logger) (*Client, error) 
 	for _, broker := range brokerList {
 		conn, err := dialer.DialContext(context.Background(), "tcp", strings.TrimSpace(broker))
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			connected = true
 			break
 		}
@@ -158,7 +160,7 @@ func (k *Client) NewWriter() *kafka.Writer {
 // NewReader creates a new Kafka Reader (Consumer Group).
 // Readers automatically handle rebalancing and offset commits.
 // Usage: msg, err := reader.ReadMessage(ctx)
-func (k *Client) NewReader(topic string, groupID string) *kafka.Reader {
+func (k *Client) NewReader(topic, groupID string) *kafka.Reader {
 	return kafka.NewReader(kafka.ReaderConfig{
 		Brokers: k.brokers,
 		GroupID: groupID,
@@ -170,7 +172,7 @@ func (k *Client) NewReader(topic string, groupID string) *kafka.Reader {
 
 // Publish is a convenient shortcut to send a single message synchronously.
 // It accepts a 'key' for partition ordering guarantees.
-func (k *Client) Publish(ctx context.Context, topic string, key []byte, value []byte) error {
+func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) error {
 	if k.closed.Load() == 1 {
 		return ErrClientClosed
 	}

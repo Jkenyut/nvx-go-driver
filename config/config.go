@@ -2,7 +2,6 @@ package config
 
 // Listener default configuration
 type Listener struct {
-
 	// Listen host/interface address
 	// Example:
 	// 0.0.0.0 = listen on all interfaces
@@ -22,8 +21,8 @@ type Listener struct {
 	Env string `yaml:"env" default:"development"`
 }
 
+// SQLConfig holds the SQL configuration.
 type SQLConfig struct {
-
 	// Enable enables/disables SQL database connection
 	Enable bool `yaml:"enable" json:"enable" default:"true"`
 
@@ -92,8 +91,8 @@ type SQLConfig struct {
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
 }
 
+// RabbitMQConfig holds the RabbitMQ configuration.
 type RabbitMQConfig struct {
-
 	// Enable enables/disables RabbitMQ connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:rabbitmq:enable"`
 
@@ -133,8 +132,8 @@ type RabbitMQConfig struct {
 	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`
 }
 
+// RedisConfig holds the Redis configuration.
 type RedisConfig struct {
-
 	// Enable enables/disables Redis connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:redis:enable"`
 
@@ -194,8 +193,8 @@ type RedisConfig struct {
 	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`
 }
 
+// KafkaConfig holds the Kafka configuration.
 type KafkaConfig struct {
-
 	// Enable enables/disables Kafka connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:kafka:enable"`
 

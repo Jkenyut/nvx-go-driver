@@ -1,3 +1,4 @@
+// Package rabbitmq provides a RabbitMQ client implementation.
 package rabbitmq
 
 import (
@@ -11,20 +12,27 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+// Action represents a consumer action.
 type Action int
 
 const (
+	// ActionAck represents an ack action.
 	ActionAck Action = iota
+	// ActionNackRequeue represents a nack and requeue action.
 	ActionNackRequeue
+	// ActionNackDiscard represents a nack and discard action.
 	ActionNackDiscard
+	// ActionNone represents no action.
 	ActionNone
 )
 
+// HandlerFunc is the consumer handler.
 type HandlerFunc func(
 	ctx context.Context,
 	msg amqp.Delivery,
 ) Action
 
+// Consumer represents a RabbitMQ consumer.
 type Consumer struct {
 	client *Client
 
@@ -49,11 +57,11 @@ type Consumer struct {
 	args      amqp.Table
 }
 
+// NewConsumer creates a new consumer.
 func NewConsumer(
 	client *Client,
 	queue string,
 ) *Consumer {
-
 	return &Consumer{
 		client:  client,
 		queue:   queue,
@@ -63,6 +71,7 @@ func NewConsumer(
 	}
 }
 
+// SetQos sets the QoS.
 func (c *Consumer) SetQos(
 	qos int,
 ) {
@@ -71,6 +80,7 @@ func (c *Consumer) SetQos(
 	c.qos = qos
 }
 
+// SetAutoAck sets auto ack.
 func (c *Consumer) SetAutoAck(
 	autoAck bool,
 ) {
@@ -79,6 +89,7 @@ func (c *Consumer) SetAutoAck(
 	c.autoAck = autoAck
 }
 
+// SetExclusive sets exclusive mode.
 func (c *Consumer) SetExclusive(
 	exclusive bool,
 ) {
@@ -87,6 +98,7 @@ func (c *Consumer) SetExclusive(
 	c.exclusive = exclusive
 }
 
+// SetNoLocal sets no local.
 func (c *Consumer) SetNoLocal(
 	noLocal bool,
 ) {
@@ -95,6 +107,7 @@ func (c *Consumer) SetNoLocal(
 	c.noLocal = noLocal
 }
 
+// SetNoWait sets no wait.
 func (c *Consumer) SetNoWait(
 	noWait bool,
 ) {
@@ -103,6 +116,7 @@ func (c *Consumer) SetNoWait(
 	c.noWait = noWait
 }
 
+// SetArgs sets the arguments.
 func (c *Consumer) SetArgs(
 	args amqp.Table,
 ) {
@@ -111,11 +125,11 @@ func (c *Consumer) SetArgs(
 	c.args = args
 }
 
+// Start starts the consumer loop.
 func (c *Consumer) Start(
 	ctx context.Context,
 	handler HandlerFunc,
 ) {
-
 	if !c.started.CompareAndSwap(false, true) {
 		if c.client != nil && c.client.log != nil {
 			c.client.log.Warn().Str("queue", c.queue).Msg("Consumer Start() ignored: already started")
@@ -139,7 +153,6 @@ func (c *Consumer) loop(
 	queue := c.queue
 
 	for {
-
 		select {
 		case <-ctx.Done():
 			return
@@ -152,7 +165,6 @@ func (c *Consumer) loop(
 
 		err := c.consume(ctx, handler)
 		if err != nil {
-
 			c.client.log.Error().
 				Err(err).
 				Str("queue", queue).
@@ -160,7 +172,6 @@ func (c *Consumer) loop(
 		}
 
 		select {
-
 		case <-ctx.Done():
 			return
 
@@ -196,7 +207,6 @@ func (c *Consumer) consume(
 	c.lock.Unlock()
 
 	defer func() {
-
 		c.lock.Lock()
 		c.ch = nil
 		// Do not clear consumerTag here, as Close() needs it, or just leave it.
@@ -212,7 +222,6 @@ func (c *Consumer) consume(
 		0,
 		false,
 	)
-
 	if err != nil {
 		return err
 	}
@@ -236,7 +245,6 @@ func (c *Consumer) consume(
 		noWait,
 		args,
 	)
-
 	if err != nil {
 		return err
 	}
@@ -246,9 +254,7 @@ func (c *Consumer) consume(
 	)
 
 	for {
-
 		select {
-
 		case <-ctx.Done():
 			return nil
 
@@ -316,8 +322,8 @@ func (c *Consumer) consume(
 	}
 }
 
+// Close gracefully closes the consumer.
 func (c *Consumer) Close() error {
-
 	c.lock.Lock()
 
 	select {

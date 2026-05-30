@@ -35,25 +35,25 @@ func LoadInto[T any](configFile string, c *T) error {
 
 	// 2. Read Existing Config (if exists)
 	if _, err := os.Stat(configFile); err == nil {
-		data, err := os.ReadFile(configFile)
-		if err != nil {
-			return fmt.Errorf("failed to read config file: %w", err)
+		data, readErr := os.ReadFile(configFile)
+		if readErr != nil {
+			return fmt.Errorf("failed to read config file: %w", readErr)
 		}
 
 		// Unmarshal merges into the existing struct 'c'
-		if err := yaml.Unmarshal(data, c); err != nil {
-			return fmt.Errorf("failed to parse config file: %w", err)
+		if unmarshalErr := yaml.Unmarshal(data, c); unmarshalErr != nil {
+			return fmt.Errorf("failed to parse config file: %w", unmarshalErr)
 		}
 
 		// 3. Write Config Back (Persist Defaults / Updates)
 		// This ensures that if the user deleted a key, it comes back with the default value.
-		newData, err := yaml.Marshal(c)
-		if err != nil {
-			return fmt.Errorf("failed to marshal config: %w", err)
+		newData, marshalErr := yaml.Marshal(c)
+		if marshalErr != nil {
+			return fmt.Errorf("failed to marshal config: %w", marshalErr)
 		}
 
-		if err := os.WriteFile(configFile, newData, 0600); err != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", err)
+		if writeErr := os.WriteFile(configFile, newData, 0o600); writeErr != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", writeErr)
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("error checking config file: %w", err)
@@ -66,7 +66,7 @@ func LoadInto[T any](configFile string, c *T) error {
 			return fmt.Errorf("failed to marshal config: %w", err)
 		}
 
-		if err := os.WriteFile(configFile, data, 0600); err != nil {
+		if err := os.WriteFile(configFile, data, 0o600); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", err)
 		}
 	}
@@ -84,7 +84,7 @@ func LoadInto[T any](configFile string, c *T) error {
 //
 // If you need to explicitly set a field to its zero value, set it after calling SetDefaults.
 func SetDefaults(ptr interface{}, defaultTag string) error {
-	if reflect.TypeOf(ptr).Kind() != reflect.Ptr {
+	if reflect.TypeOf(ptr).Kind() != reflect.Pointer {
 		return fmt.Errorf("not a pointer")
 	}
 
@@ -99,7 +99,7 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 		defaultVal := field.Tag.Get(defaultTag)
 
 		// Handle Pointers
-		if value.Kind() == reflect.Ptr {
+		if value.Kind() == reflect.Pointer {
 			if defaultVal != "" {
 				if value.IsNil() {
 					// Allocate new value
@@ -114,16 +114,10 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 			}
 
 			// If no default tag, but it's a struct pointer, we might need to recurse
-			if value.IsNil() {
-				// If nil and no default, we generally leave it nil unless it's a struct we want to auto-init?
-				// For now, let's only recurse if it's NOT nil or if we decide to auto-init structs.
-				// Current logic: Only set defaults if tag exists or structure exists.
-			} else {
+			if !value.IsNil() && value.Elem().Kind() == reflect.Struct {
 				// Recurse if it points to a struct
-				if value.Elem().Kind() == reflect.Struct {
-					if err := SetDefaults(value.Interface(), defaultTag); err != nil {
-						return err
-					}
+				if err := SetDefaults(value.Interface(), defaultTag); err != nil {
+					return err
 				}
 			}
 			continue
@@ -248,7 +242,7 @@ func setField(value reflect.Value, defaultVal string) error {
 // If the file cannot be read (e.g., does not exist), it falls back to the specified environment variable.
 // The file content is trimmed of leading/trailing whitespace using strings.TrimSpace.
 // This supports the Docker Secret pattern (file-based) with a dev-friendly environment variable fallback.
-func SetValueFromEnv(pathSecret, env string, fallback string) string {
+func SetValueFromEnv(pathSecret, env, fallback string) string {
 	data, err := os.ReadFile(pathSecret)
 	if err != nil {
 		if v := os.Getenv(env); v != "" {

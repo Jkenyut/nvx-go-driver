@@ -210,7 +210,7 @@ func TestLoad_ReadsExistingFile(t *testing.T) {
 	configFile := filepath.Join(tmpDir, "config.yaml")
 
 	content := []byte("name: custom_service\nport: 9999\n")
-	if err := os.WriteFile(configFile, content, 0644); err != nil {
+	if err := os.WriteFile(configFile, content, 0o644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
@@ -239,7 +239,7 @@ func TestLoad_MergesDefaultsWithExisting(t *testing.T) {
 
 	// File only has Name, missing Port and Version
 	content := []byte("name: my_service\n")
-	if err := os.WriteFile(configFile, content, 0644); err != nil {
+	if err := os.WriteFile(configFile, content, 0o644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
@@ -277,7 +277,7 @@ func TestSetValueFromEnv_EnvVar(t *testing.T) {
 func TestSetValueFromEnv_File(t *testing.T) {
 	tmpDir := t.TempDir()
 	secretFile := filepath.Join(tmpDir, "secret")
-	if err := os.WriteFile(secretFile, []byte("  file_secret  \n"), 0644); err != nil {
+	if err := os.WriteFile(secretFile, []byte("  file_secret  \n"), 0o644); err != nil {
 		t.Fatalf("failed to write secret file: %v", err)
 	}
 

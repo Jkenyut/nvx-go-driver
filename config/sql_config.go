@@ -1,4 +1,4 @@
-// config/sql.go
+// Package config provides configuration structs.
 package config
 
 import (

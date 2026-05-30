@@ -15,8 +15,9 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// Client represents a RabbitMQ client.
 type Client struct {
-	cfg config.RabbitMQConfig
+	cfg *config.RabbitMQConfig
 	log *zerolog.Logger
 
 	lock sync.RWMutex
@@ -30,11 +31,11 @@ type Client struct {
 	wg   sync.WaitGroup
 }
 
+// NewClient creates a new RabbitMQ client.
 func NewClient(
-	cfg config.RabbitMQConfig,
+	cfg *config.RabbitMQConfig,
 	logger *zerolog.Logger,
 ) (*Client, error) {
-
 	if logger == nil {
 		nop := zerolog.Nop()
 		logger = &nop
@@ -46,7 +47,7 @@ func NewClient(
 		)
 	}
 
-	cfg = *cfg.WithDefaults()
+	cfg = cfg.WithDefaults()
 
 	client := &Client{
 		cfg:  cfg,
@@ -84,7 +85,6 @@ func (r *Client) publishTimeout() time.Duration {
 }
 
 func (r *Client) connect() error {
-
 	scheme := "amqp"
 	if r.cfg.TLS {
 		scheme = "amqps"
@@ -112,7 +112,6 @@ func (r *Client) connect() error {
 		dsn,
 		amqpConfig,
 	)
-
 	if err != nil {
 		r.ready.Store(false)
 
@@ -153,7 +152,6 @@ func (r *Client) reconnectDuration() time.Duration {
 func (r *Client) reconnectLoop() {
 	backoff := r.reconnectDuration()
 	for {
-
 		select {
 		case <-r.done:
 			return
@@ -165,7 +163,6 @@ func (r *Client) reconnectLoop() {
 		r.lock.RUnlock()
 
 		if conn == nil {
-
 			select {
 			case <-r.done:
 				return
@@ -212,7 +209,6 @@ func (r *Client) reconnectLoop() {
 		}
 
 		for {
-
 			select {
 			case <-r.done:
 				return
@@ -221,7 +217,6 @@ func (r *Client) reconnectLoop() {
 
 			errs := r.connect()
 			if errs == nil {
-
 				backoff = r.reconnectDuration()
 
 				r.log.Info().
@@ -247,12 +242,13 @@ func (r *Client) reconnectLoop() {
 	}
 }
 
+// IsReady returns true if the client is ready.
 func (r *Client) IsReady() bool {
 	return r.ready.Load()
 }
 
+// Connection returns the underlying amqp.Connection.
 func (r *Client) Connection() (*amqp.Connection, error) {
-
 	r.lock.RLock()
 
 	conn := r.conn
@@ -268,8 +264,8 @@ func (r *Client) Connection() (*amqp.Connection, error) {
 	return conn, nil
 }
 
+// NewChannel creates and returns a new amqp.Channel.
 func (r *Client) NewChannel() (*amqp.Channel, error) {
-
 	conn, err := r.Connection()
 	if err != nil {
 		return nil, err
@@ -286,8 +282,8 @@ func (r *Client) NewChannel() (*amqp.Channel, error) {
 	return ch, nil
 }
 
+// Ping verifies if the connection is alive.
 func (r *Client) Ping() error {
-
 	ch, err := r.NewChannel()
 	if err != nil {
 		return err
@@ -302,8 +298,8 @@ func (r *Client) Ping() error {
 	return nil
 }
 
+// Close gracefully closes the client.
 func (r *Client) Close() error {
-
 	if !r.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -338,7 +334,7 @@ func (r *Client) DeclareExchange(name, kind string, durable, autoDelete, interna
 	if err != nil {
 		return err
 	}
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	return ch.ExchangeDeclare(name, kind, durable, autoDelete, internal, noWait, args)
 }
@@ -349,7 +345,7 @@ func (r *Client) DeclareQueue(name string, durable, autoDelete, exclusive, noWai
 	if err != nil {
 		return amqp.Queue{}, err
 	}
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	return ch.QueueDeclare(name, durable, autoDelete, exclusive, noWait, args)
 }
@@ -360,7 +356,7 @@ func (r *Client) BindQueue(queue, routingKey, exchange string, noWait bool, args
 	if err != nil {
 		return err
 	}
-	defer ch.Close()
+	defer func() { _ = ch.Close() }()
 
 	return ch.QueueBind(queue, routingKey, exchange, noWait, args)
 }
