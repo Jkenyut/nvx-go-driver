@@ -8,6 +8,9 @@ import (
 
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Publisher represents a RabbitMQ publisher.
@@ -324,6 +327,19 @@ func (p *Publisher) publishOnce(
 	if err != nil {
 		p.publishLock.Unlock()
 		return err
+	}
+
+	if p.client.cfg.EnableTelemetry {
+		tracer := otel.Tracer("nvx-go-driver/rabbitmq")
+		var span trace.Span
+		ctx, span = tracer.Start(publishCtx, "RabbitMQ Publish", trace.WithSpanKind(trace.SpanKindProducer))
+		span.SetAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination", exchange),
+			attribute.String("messaging.routing_key", routingKey),
+		)
+		defer span.End()
+		publishCtx = ctx
 	}
 
 	seqNo := ch.GetNextPublishSeqNo()

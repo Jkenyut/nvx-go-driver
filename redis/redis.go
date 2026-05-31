@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	"github.com/bytedance/sonic"
+	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
 )
@@ -63,8 +65,7 @@ type Metrics struct {
 //	val, err := client.Client().Get(ctx, "key").Result()
 func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
-		nop := zerolog.Nop()
-		logger = &nop
+		logger = driverLogger.L()
 	}
 
 	if !cfg.Enable {
@@ -88,6 +89,15 @@ func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error)
 		PoolTimeout:     time.Duration(cfg.PoolTimeout) * time.Second,
 		// go-redis handles reconnects automatically
 	})
+
+	if cfg.EnableTelemetry {
+		if err := redisotel.InstrumentTracing(rdb); err != nil {
+			return nil, fmt.Errorf("failed to instrument redis tracing: %w", err)
+		}
+		if err := redisotel.InstrumentMetrics(rdb); err != nil {
+			return nil, fmt.Errorf("failed to instrument redis metrics: %w", err)
+		}
+	}
 
 	var err error
 	maxAttempts := 1

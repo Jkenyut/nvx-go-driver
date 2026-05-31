@@ -10,6 +10,9 @@ import (
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Action represents a consumer action.
@@ -286,7 +289,20 @@ func (c *Consumer) consume(
 					}
 				}()
 
-				action := handler(ctx, msg)
+				var action Action
+				if c.client.cfg.EnableTelemetry {
+					tracer := otel.Tracer("nvx-go-driver/rabbitmq")
+					var span trace.Span
+					ctx, span = tracer.Start(ctx, "RabbitMQ Consume", trace.WithSpanKind(trace.SpanKindConsumer))
+					span.SetAttributes(
+						attribute.String("messaging.system", "rabbitmq"),
+						attribute.String("messaging.destination", queue),
+					)
+					action = handler(ctx, msg)
+					span.End()
+				} else {
+					action = handler(ctx, msg)
+				}
 
 				if !autoAck {
 					switch action {

@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -96,8 +97,7 @@ func NewClientWithHook(cfg *config.SQLConfig, logger *zerolog.Logger,
 	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
 ) (*Client, error) {
 	if logger == nil {
-		nop := zerolog.Nop()
-		logger = &nop
+		logger = driverLogger.L()
 	}
 
 	cfg = cfg.WithDefaults()
@@ -354,6 +354,10 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 
 	if c.afterConnect != nil {
 		pc.AfterConnect = c.afterConnect
+	}
+
+	if c.cfg.EnableTelemetry {
+		pc.ConnConfig.Tracer = newPrivateTracer()
 	}
 
 	// Simple validation: reject closed connections (fast, no extra ping)

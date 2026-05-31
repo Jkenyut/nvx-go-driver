@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/rs/zerolog"
 )
@@ -37,8 +38,7 @@ func NewClient(
 	logger *zerolog.Logger,
 ) (*Client, error) {
 	if logger == nil {
-		nop := zerolog.Nop()
-		logger = &nop
+		logger = driverLogger.L()
 	}
 
 	if !cfg.Enable {

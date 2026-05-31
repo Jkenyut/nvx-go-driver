@@ -26,6 +26,9 @@ type SQLConfig struct {
 	// Enable enables/disables SQL database connection
 	Enable bool `yaml:"enable" json:"enable" default:"true"`
 
+	// EnableTelemetry enables tracing/metrics
+	EnableTelemetry bool `yaml:"enable_telemetry" json:"enable_telemetry" default:"false"`
+
 	// Host database host/address
 	Host string `yaml:"host" json:"host" default:"0.0.0.0"`
 
@@ -96,6 +99,9 @@ type RabbitMQConfig struct {
 	// Enable enables/disables RabbitMQ connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:rabbitmq:enable"`
 
+	// EnableTelemetry enables tracing/metrics
+	EnableTelemetry bool `yaml:"enableTelemetry" default:"false" desc:"config:rabbitmq:enableTelemetry"`
+
 	// Host RabbitMQ server host/address
 	Host string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
 
@@ -136,6 +142,9 @@ type RabbitMQConfig struct {
 type RedisConfig struct {
 	// Enable enables/disables Redis connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:redis:enable"`
+
+	// EnableTelemetry enables tracing/metrics
+	EnableTelemetry bool `yaml:"enableTelemetry" default:"false" desc:"config:redis:enableTelemetry"`
 
 	// Database Redis database index
 	Database int `yaml:"database" default:"0" desc:"config:redis:database"`
@@ -197,6 +206,9 @@ type RedisConfig struct {
 type KafkaConfig struct {
 	// Enable enables/disables Kafka connection
 	Enable bool `yaml:"enable" default:"false" desc:"config:kafka:enable"`
+
+	// EnableTelemetry enables tracing/metrics
+	EnableTelemetry bool `yaml:"enableTelemetry" default:"false" desc:"config:kafka:enableTelemetry"`
 
 	// Host Kafka broker address
 	// Example:

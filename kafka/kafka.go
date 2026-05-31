@@ -11,11 +11,15 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
+	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"
 	"github.com/segmentio/kafka-go/sasl/scram"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ErrClientClosed is returned when an operation is attempted on a closed client.
@@ -59,8 +63,7 @@ type Client struct {
 //   - Mechanism: "PLAIN"
 func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
 	if logger == nil {
-		nop := zerolog.Nop()
-		logger = &nop
+		logger = driverLogger.L()
 	}
 
 	if !cfg.Enable {
@@ -200,6 +203,17 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 	}
 	if len(key) > 0 {
 		msg.Key = key
+	}
+
+	if k.cfg.EnableTelemetry {
+		tracer := otel.Tracer("nvx-go-driver/kafka")
+		var span trace.Span
+		ctx, span = tracer.Start(ctx, "Kafka Publish", trace.WithSpanKind(trace.SpanKindProducer))
+		span.SetAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination", topic),
+		)
+		defer span.End()
 	}
 
 	// WriteMessages blocks until the message is written or the context is cancelled.
