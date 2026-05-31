@@ -56,7 +56,7 @@ func InitFromConfig(cfg config.Listener) {
 		// Pretty, colored output for local development and staging
 		writer = zerolog.ConsoleWriter{
 			Out:        os.Stderr,
-			TimeFormat: "2006-01-02 15:04:05", // requested human-readable format
+			TimeFormat: time.RFC3339, // requested human-readable format
 			NoColor:    false,
 		}
 	}
