@@ -26,6 +26,7 @@
 package logger
 
 import (
+	"context"
 	"io"
 	"os"
 	"time"
@@ -33,6 +34,7 @@ import (
 	"github.com/Jkenyut/nvx-go-driver/config"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/diode"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // InitFromConfig initializes the global zerolog logger using values from the
@@ -55,9 +57,8 @@ func InitFromConfig(cfg config.Listener) {
 	} else {
 		// Pretty, colored output for local development and staging
 		writer = zerolog.ConsoleWriter{
-			Out:        os.Stderr,
-			TimeFormat: time.RFC3339, // requested human-readable format
-			NoColor:    false,
+			Out:     os.Stderr,
+			NoColor: false,
 		}
 	}
 
@@ -103,23 +104,36 @@ func L() *zerolog.Logger {
 	return zerolog.DefaultContextLogger
 }
 
+// Ctx returns a logger instance with OpenTelemetry trace_id and span_id from context.
+func Ctx(ctx context.Context) *zerolog.Logger {
+	l := L().With().Logger()
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if spanCtx.HasTraceID() {
+		l = l.With().Str("trace_id", spanCtx.TraceID().String()).Logger()
+	}
+	if spanCtx.HasSpanID() {
+		l = l.With().Str("span_id", spanCtx.SpanID().String()).Logger()
+	}
+	return &l
+}
+
 // Convenience global functions for common log levels.
-// These use the global logger and are safe to call from any package.
+// These use the global logger and enforce passing context for trace propagation.
 
-// Debug creates a debug-level log event.
-func Debug() *zerolog.Event { return L().Debug() }
+// Debug creates a debug-level log event with OpenTelemetry trace_id and span_id.
+func Debug(ctx context.Context) *zerolog.Event { return Ctx(ctx).Debug() }
 
-// Info creates an info-level log event.
-func Info() *zerolog.Event { return L().Info() }
+// Info creates an info-level log event with OpenTelemetry trace_id and span_id.
+func Info(ctx context.Context) *zerolog.Event { return Ctx(ctx).Info() }
 
-// Warn creates a warning-level log event.
-func Warn() *zerolog.Event { return L().Warn() }
+// Warn creates a warning-level log event with OpenTelemetry trace_id and span_id.
+func Warn(ctx context.Context) *zerolog.Event { return Ctx(ctx).Warn() }
 
-// Error creates an error-level log event.
-func Error() *zerolog.Event { return L().Error() }
+// Error creates an error-level log event with OpenTelemetry trace_id and span_id.
+func Error(ctx context.Context) *zerolog.Event { return Ctx(ctx).Error() }
 
-// Fatal creates a fatal-level log event (logs and calls os.Exit(1)).
-func Fatal() *zerolog.Event { return L().Fatal() }
+// Fatal creates a fatal-level log event with OpenTelemetry trace_id and span_id.
+func Fatal(ctx context.Context) *zerolog.Event { return Ctx(ctx).Fatal() }
 
-// Panic creates a panic-level log event (logs and panics).
-func Panic() *zerolog.Event { return L().Panic() }
+// Panic creates a panic-level log event with OpenTelemetry trace_id and span_id.
+func Panic(ctx context.Context) *zerolog.Event { return Ctx(ctx).Panic() }
