@@ -30,6 +30,7 @@ The logger automatically adapts to JSON in production and colored output in deve
 import "github.com/Jkenyut/nvx-go-driver/logger"
 // ...
 logger.InitFromConfig(cfg.Listener)
+defer logger.Close() // Flush remaining logs on shutdown
 
 // Use convenience methods anywhere in your app:
 logger.Info().Msg("Application started")
@@ -73,7 +74,7 @@ mq.BindQueue("my_queue", "my_routing_key", "my_exchange", false, nil)
 // Publisher (Auto-injects MessageId & Timestamp for Idempotency)
 pub, _ := rabbitmq.NewPublisher(mq)
 pub.SetMaxAttempts(3) // 3 = At-Least-Once, 1 = At-Most-Once
-msg := amqp091.Publishing{Body: []byte("hello")}
+msg := &amqp091.Publishing{Body: []byte("hello")}
 err = pub.Publish(ctx, "my_exchange", "my_routing_key", msg, false, false)
 
 // Consumer (Graceful Shutdown ready)

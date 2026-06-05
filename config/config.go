@@ -89,6 +89,10 @@ type SQLConfig struct {
 	// Defaults to "nvx-go-driver" if empty.
 	ApplicationName string `yaml:"application_name" json:"application_name" default:""`
 
+	// DefaultQueryExecMode configures the default query execution mode for pgx.
+	// Valid values: "cache_statement", "cache_describe", "describe_exec", "exec", "simple_protocol"
+	DefaultQueryExecMode string `yaml:"default_query_exec_mode" json:"default_query_exec_mode" default:"cache_statement"`
+
 	// UseMock enables mock database implementation
 	// Useful for testing and local development
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`

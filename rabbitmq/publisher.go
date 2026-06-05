@@ -265,7 +265,7 @@ func (p *Publisher) Publish(
 	ctx context.Context,
 	exchange string,
 	routingKey string,
-	msg amqp.Publishing,
+	msg *amqp.Publishing,
 	mandatory bool,
 	immediate bool,
 ) error {
@@ -314,7 +314,7 @@ func (p *Publisher) publishOnce(
 	ctx context.Context,
 	exchange string,
 	routingKey string,
-	msg amqp.Publishing,
+	msg *amqp.Publishing,
 	mandatory bool,
 	immediate bool,
 ) error {
@@ -352,7 +352,7 @@ func (p *Publisher) publishOnce(
 		routingKey,
 		mandatory,
 		immediate,
-		msg,
+		*msg,
 	)
 	if err != nil {
 		p.pendingConfirms.Delete(seqNo)

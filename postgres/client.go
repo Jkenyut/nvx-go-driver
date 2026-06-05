@@ -233,12 +233,12 @@ func (c *Client) Begin(ctx context.Context) (pgx.Tx, error) {
 }
 
 // BeginTx starts a transaction with the specified options.
-func (c *Client) BeginTx(ctx context.Context, txOptions pgx.TxOptions) (pgx.Tx, error) {
+func (c *Client) BeginTx(ctx context.Context, txOptions *pgx.TxOptions) (pgx.Tx, error) {
 	pool := c.Pool()
 	if pool == nil {
 		return nil, ErrClientClosed
 	}
-	return pool.BeginTx(ctx, txOptions)
+	return pool.BeginTx(ctx, *txOptions)
 }
 
 // RunInTx executes the provided function within a transaction.
@@ -346,6 +346,18 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 			appName = "nvx-go-driver"
 		}
 		pc.ConnConfig.RuntimeParams["application_name"] = appName
+	}
+	switch c.cfg.DefaultQueryExecMode {
+	case "cache_statement":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
+	case "cache_describe":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
+	case "describe_exec":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
+	case "exec":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	case "simple_protocol":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	}
 
 	if c.beforeConnect != nil {

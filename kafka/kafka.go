@@ -33,6 +33,8 @@ type SmartBalancer struct {
 }
 
 // Balance returns the partition for the given message.
+//
+//nolint:gocritic
 func (b *SmartBalancer) Balance(msg kafka.Message, partitions ...int) int {
 	if len(msg.Key) > 0 {
 		return b.Murmur2.Balance(msg, partitions...)

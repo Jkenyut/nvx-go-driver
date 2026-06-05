@@ -37,6 +37,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+var globalDiodeCloser io.Closer
+
 // InitFromConfig initializes the global zerolog logger using values from the
 // provided Listener configuration.
 //
@@ -80,6 +82,7 @@ func InitFromConfig(cfg config.Listener) {
 	}
 
 	wr := diode.NewWriter(writer, 1000, 10*time.Millisecond, func(_ int) {})
+	globalDiodeCloser = wr
 
 	log := zerolog.New(wr).
 		With().
@@ -91,6 +94,17 @@ func InitFromConfig(cfg config.Listener) {
 		Logger()
 
 	zerolog.DefaultContextLogger = &log
+}
+
+// Close flushes all remaining logs in the buffer and stops the background
+// logging goroutine. This should be called during graceful shutdown.
+func Close() error {
+	if globalDiodeCloser != nil {
+		err := globalDiodeCloser.Close()
+		globalDiodeCloser = nil
+		return err
+	}
+	return nil
 }
 
 // L returns the global logger instance.
