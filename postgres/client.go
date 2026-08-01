@@ -35,6 +35,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -375,6 +376,19 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	// Simple validation: reject closed connections (fast, no extra ping)
 	pc.PrepareConn = func(_ context.Context, conn *pgx.Conn) (bool, error) {
 		return !conn.IsClosed(), nil
+	}
+
+	switch strings.ToLower(c.cfg.QueryExecMode) {
+	case "exec":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	case "simple_protocol":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
+	case "cache_describe":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
+	case "describe_exec":
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
+	default:
+		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, pc)

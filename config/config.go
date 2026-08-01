@@ -96,6 +96,10 @@ type SQLConfig struct {
 	// UseMock enables mock database implementation
 	// Useful for testing and local development
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
+
+	// QueryExecMode configures pgx query execution mode.
+	// Use "exec" or "simple_protocol" for pgBouncer transaction mode.
+	QueryExecMode string `yaml:"query_exec_mode" json:"query_exec_mode" default:"cache_statement"`
 }
 
 // RabbitMQConfig holds the RabbitMQ configuration.
