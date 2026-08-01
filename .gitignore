@@ -138,3 +138,14 @@ temp/
 !.env.example
 !docker-compose.yml
 !Dockerfile
+
+# Added by code-review-graph
+.code-review-graph/
+.agents/
+
+# Added by graphify
+graphify-out/
+AGENTS.md
+GEMINI.md
+
+skills-lock.json
