@@ -74,21 +74,36 @@ func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error)
 
 	cfg = cfg.WithDefaults()
 
-	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	var opt *redis.Options
+	if cfg.Connection != "" {
+		parsedOpt, err := redis.ParseURL(cfg.Connection)
+		if err != nil {
+			return nil, fmt.Errorf("invalid redis connection url: %w", err)
+		}
+		opt = parsedOpt
+	} else {
+		opt = &redis.Options{
+			Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+			Password: cfg.Password,
+			DB:       cfg.Database,
+		}
+	}
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:            addr,
-		Password:        cfg.Password,
-		DB:              cfg.Database,
-		TLSConfig:       redisTLSConfig(cfg),
-		PoolSize:        cfg.PoolSize,
-		MinIdleConns:    cfg.MinIdleConn,
-		MaxIdleConns:    cfg.MaxIdleConn,
-		ConnMaxLifetime: time.Duration(cfg.ConnMaxLife) * time.Second,
-		DialTimeout:     time.Duration(cfg.ConnectTimeout) * time.Second,
-		PoolTimeout:     time.Duration(cfg.PoolTimeout) * time.Second,
-		// go-redis handles reconnects automatically
-	})
+	appName := cfg.ApplicationName
+	if appName == "" {
+		appName = "nvx-go-driver"
+	}
+
+	opt.ClientName = appName
+	opt.TLSConfig = redisTLSConfig(cfg)
+	opt.PoolSize = cfg.PoolSize
+	opt.MinIdleConns = cfg.MinIdleConn
+	opt.MaxIdleConns = cfg.MaxIdleConn
+	opt.ConnMaxLifetime = time.Duration(cfg.ConnMaxLife) * time.Second
+	opt.DialTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
+	opt.PoolTimeout = time.Duration(cfg.PoolTimeout) * time.Second
+
+	rdb := redis.NewClient(opt)
 
 	if cfg.EnableTelemetry {
 		if err := redisotel.InstrumentTracing(rdb); err != nil {
@@ -134,7 +149,7 @@ func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error)
 	}
 
 	logger.Info().
-		Str("addr", addr).
+		Str("addr", opt.Addr).
 		Int("pool_size", cfg.PoolSize).
 		Msg("Redis connected successfully")
 

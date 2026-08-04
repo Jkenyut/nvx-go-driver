@@ -109,7 +109,7 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 		SASLMechanism: mechanism,
 	}
 
-	brokerList := strings.Split(cfg.Host, ",")
+	brokerList := strings.Split(cfg.Brokers, ",")
 
 	// Fast fail check - try all brokers, succeed if at least one is reachable
 	var lastErr error
@@ -131,7 +131,7 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 		return nil, errors.New("no kafka brokers configured")
 	}
 
-	logger.Info().Str("brokers", cfg.Host).Msg("Kafka config valid and reachable")
+	logger.Info().Str("brokers", cfg.Brokers).Msg("Kafka config valid and reachable")
 
 	return &Client{
 		cfg:     cfg,
