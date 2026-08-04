@@ -110,6 +110,13 @@ type RabbitMQConfig struct {
 	// EnableTelemetry enables tracing/metrics
 	EnableTelemetry bool `yaml:"enableTelemetry" default:"false" desc:"config:rabbitmq:enableTelemetry"`
 
+	// Connection full RabbitMQ connection URL override
+	// Example: amqps://user:password@localhost:5672/vhost
+	Connection string `yaml:"connection" default:"" desc:"config:rabbitmq:connection"`
+
+	// VHost RabbitMQ virtual host
+	VHost string `yaml:"vhost" default:"/" desc:"config:rabbitmq:vhost"`
+
 	// Host RabbitMQ server host/address
 	Host string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
 
@@ -156,6 +163,14 @@ type RedisConfig struct {
 
 	// Database Redis database index
 	Database int `yaml:"database" default:"0" desc:"config:redis:database"`
+
+	// Connection full Redis connection URL override
+	// Example: redis://user:password@localhost:6379/0
+	Connection string `yaml:"connection" default:"" desc:"config:redis:connection"`
+
+	// ApplicationName identifies this service in Redis CLIENT LIST.
+	// Defaults to "nvx-go-driver" if empty.
+	ApplicationName string `yaml:"applicationName" default:"" desc:"config:redis:applicationName"`
 
 	// Host Redis server host/address
 	Host string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
@@ -218,10 +233,10 @@ type KafkaConfig struct {
 	// EnableTelemetry enables tracing/metrics
 	EnableTelemetry bool `yaml:"enableTelemetry" default:"false" desc:"config:kafka:enableTelemetry"`
 
-	// Host Kafka broker address
+	// Brokers Kafka broker addresses (comma-separated)
 	// Example:
-	// localhost:9092
-	Host string `yaml:"host" default:"0.0.0.0:9092" desc:"config:kafka:host"`
+	// broker1:9092,broker2:9092
+	Brokers string `yaml:"brokers" default:"0.0.0.0:9092" desc:"config:kafka:brokers"`
 
 	// Registry schema registry address
 	// Used for Avro/Schema-based serialization

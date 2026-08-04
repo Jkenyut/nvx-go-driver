@@ -53,7 +53,9 @@ func InitFromConfig(cfg config.Listener) {
 	env := cfg.Environment() // defaults to "development" if empty
 
 	var writer io.Writer
-	if env == "production" || env == "prod" {
+	isProd := env == "production" || env == "prod"
+
+	if isProd {
 		// JSON output for log aggregation systems
 		writer = os.Stdout
 	} else {
@@ -74,7 +76,7 @@ func InitFromConfig(cfg config.Listener) {
 		}
 	} else {
 		// Default level based on environment
-		if env == "production" || env == "prod" {
+		if isProd {
 			zerolog.SetGlobalLevel(zerolog.InfoLevel)
 		} else {
 			zerolog.SetGlobalLevel(zerolog.DebugLevel)
@@ -84,15 +86,19 @@ func InitFromConfig(cfg config.Listener) {
 	wr := diode.NewWriter(writer, 1000, 10*time.Millisecond, func(_ int) {})
 	globalDiodeCloser = wr
 
-	log := zerolog.New(wr).
+	logContext := zerolog.New(wr).
 		With().
 		Timestamp().
-		Caller().
 		Str("service", cfg.ServiceName()).
 		Str("env", env).
-		Int("port", cfg.Port).
-		Logger()
+		Int("port", cfg.Port)
 
+	// Caller is expensive. Only enable it in non-production environments.
+	if !isProd {
+		logContext = logContext.Caller()
+	}
+
+	log := logContext.Logger()
 	zerolog.DefaultContextLogger = &log
 }
 

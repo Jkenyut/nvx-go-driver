@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -85,16 +86,29 @@ func (r *Client) publishTimeout() time.Duration {
 }
 
 func (r *Client) connect() error {
-	scheme := "amqp"
-	if r.cfg.TLS {
-		scheme = "amqps"
+	var dsn string
+	if r.cfg.Connection != "" {
+		dsn = r.cfg.Connection
+	} else {
+		scheme := "amqp"
+		if r.cfg.TLS {
+			scheme = "amqps"
+		}
+		
+		vhost := r.cfg.VHost
+		if vhost == "" {
+			vhost = "/"
+		} else if !strings.HasPrefix(vhost, "/") {
+			vhost = "/" + vhost
+		}
+
+		dsn = (&url.URL{
+			Scheme: scheme,
+			User:   url.UserPassword(r.cfg.Username, r.cfg.Password),
+			Host:   net.JoinHostPort(r.cfg.Host, fmt.Sprintf("%d", r.cfg.Port)),
+			Path:   vhost,
+		}).String()
 	}
-	dsn := (&url.URL{
-		Scheme: scheme,
-		User:   url.UserPassword(r.cfg.Username, r.cfg.Password),
-		Host:   net.JoinHostPort(r.cfg.Host, fmt.Sprintf("%d", r.cfg.Port)),
-		Path:   "/",
-	}).String()
 
 	amqpConfig := amqp.Config{
 		Heartbeat: 10 * time.Second,
