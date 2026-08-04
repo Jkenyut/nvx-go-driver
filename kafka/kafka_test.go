@@ -41,8 +41,8 @@ func TestWithDefaults(t *testing.T) {
 				t.Errorf("SecurityProtocol = %v, want %v", got.SecurityProtocol, tt.expected)
 			}
 			// Check host default
-			if got.Host == "" {
-				t.Error("Host should have a default value")
+			if got.Brokers == "" {
+				t.Error("Brokers should have a default value")
 			}
 		})
 	}
