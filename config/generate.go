@@ -134,6 +134,12 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 		// Handle Slices: Generate one example item if slice is empty
 		if value.Kind() == reflect.Slice {
 			if value.Len() == 0 {
+				if defaultVal == "[]" {
+					// User explicitly requested empty slice
+					value.Set(reflect.MakeSlice(value.Type(), 0, 0))
+					continue
+				}
+
 				elemType := value.Type().Elem()
 
 				// Handle Slice of Structs
@@ -158,6 +164,12 @@ func SetDefaults(ptr interface{}, defaultTag string) error {
 			if value.IsNil() {
 				mapType := value.Type()
 				newMap := reflect.MakeMap(mapType)
+
+				if defaultVal == "{}" {
+					// User explicitly requested empty map
+					value.Set(newMap)
+					continue
+				}
 
 				// Create Example Key
 				var key reflect.Value
