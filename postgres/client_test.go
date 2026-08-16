@@ -89,7 +89,7 @@ func TestBuildDSN_EscapesURLParts(t *testing.T) {
 	}
 }
 
-func TestConfigDefaults(t *testing.T) {
+func TestMaskPassword(t *testing.T) {
 	// Since WithDefaults is in a different package (config) and is called by NewClient,
 	// we want to ensure NewClient applies them.
 	// However, NewClient tries to connect.
@@ -143,6 +143,3 @@ func TestMetrics_Structure(t *testing.T) {
 	}
 }
 
-// In the original file atomic.Int64 is used.
-// We just need to ensure the struct logic works.
-// Since we are in the same package (database), we can access private fields.

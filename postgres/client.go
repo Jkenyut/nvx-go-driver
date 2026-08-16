@@ -469,6 +469,9 @@ func (c *Client) setPool(p *pgxpool.Pool, isReconnect bool) {
 
 func (c *Client) monitor() {
 	healthInterval := time.Duration(c.cfg.HealthCheckPeriod) * time.Second
+	if healthInterval <= 0 {
+		healthInterval = 5 * time.Second
+	}
 	ticker := time.NewTicker(healthInterval)
 	defer ticker.Stop()
 
