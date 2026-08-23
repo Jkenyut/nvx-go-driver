@@ -33,6 +33,12 @@ func TestSQLConfig_WithDefaults(t *testing.T) {
 				if cfg.Username != "postgres" {
 					t.Errorf("Username = %q, want %q", cfg.Username, "postgres")
 				}
+				if cfg.Database != "postgres" {
+					t.Errorf("Database = %q, want %q", cfg.Database, "postgres")
+				}
+				if cfg.Schema != "public" {
+					t.Errorf("Schema = %q, want %q", cfg.Schema, "public")
+				}
 				expectedMaxConn := runtime.NumCPU() * 8
 				if cfg.MaxConn != expectedMaxConn {
 					t.Errorf("MaxConn = %d, want %d (NumCPU*8)", cfg.MaxConn, expectedMaxConn)

@@ -128,14 +128,21 @@ func NewClientWithHook(cfg *config.SQLConfig, logger *zerolog.Logger,
 // internal helpers below — not part of public API
 
 func (c *Client) connectInitial() error {
+	maskedDSN := maskPassword(buildDSN(c.cfg))
 	pool, err := c.createPoolWithRetry(context.Background())
 	if err != nil {
+		c.log.Error().
+			Str("dsn", maskedDSN).
+			Str("schema", c.cfg.Schema).
+			Err(err).
+			Msg("Database connection failed")
 		return err
 	}
 	c.setPool(pool, false)
 	c.healthy.Store(true)
 	c.log.Info().
-		Str("dsn", maskPassword(buildDSN(c.cfg))).
+		Str("dsn", maskedDSN).
+		Str("schema", c.cfg.Schema).
 		Int("max_conns", c.cfg.MaxConn).
 		Int("min_conns", c.cfg.MinConn).
 		Msg("Database connected successfully")
@@ -155,6 +162,7 @@ func (c *Client) Pool() *pgxpool.Pool {
 }
 
 func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
+	maskedDSN := maskPassword(buildDSN(c.cfg))
 	baseDelay := time.Second
 	for attempt := 1; attempt <= 20; attempt++ {
 		if c.IsClosed() {
@@ -165,7 +173,11 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 		pool, err := c.createPool(pctx)
 		cancel()
 		if err == nil {
-			c.log.Info().Int("attempt", attempt).Msg("Database connected")
+			c.log.Info().
+				Str("dsn", maskedDSN).
+				Str("schema", c.cfg.Schema).
+				Int("attempt", attempt).
+				Msg("Database connected")
 			return pool, nil
 		}
 
@@ -176,6 +188,8 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 		backoff += jitter(backoff / 2)
 
 		c.log.Warn().
+			Str("dsn", maskedDSN).
+			Str("schema", c.cfg.Schema).
 			Int("attempt", attempt).
 			Err(err).
 			Dur("retry_in", backoff).
@@ -347,6 +361,9 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 			appName = "nvx-go-driver"
 		}
 		pc.ConnConfig.RuntimeParams["application_name"] = appName
+	}
+	if c.cfg.Schema != "" {
+		pc.ConnConfig.RuntimeParams["search_path"] = c.cfg.Schema
 	}
 	switch c.cfg.DefaultQueryExecMode {
 	case "cache_statement":
