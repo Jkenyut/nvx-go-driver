@@ -28,6 +28,9 @@ func (c *SQLConfig) WithDefaults() *SQLConfig {
 	if c.Database == "" {
 		c.Database = "postgres"
 	}
+	if c.Schema == "" {
+		c.Schema = "public"
+	}
 	if c.Options == "" {
 		c.Options = "sslmode=disable"
 	}

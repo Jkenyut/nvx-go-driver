@@ -44,6 +44,11 @@ type SQLConfig struct {
 	// Database database/schema name
 	Database string `yaml:"database" json:"database" default:"postgres"`
 
+	// Schema sets the PostgreSQL search_path for this connection.
+	// Controls which schema is searched first when unqualified table names are used.
+	// Defaults to "public" if empty.
+	Schema string `yaml:"schema" json:"schema" default:"public"`
+
 	// Options additional database connection options
 	// Example:
 	// sslmode=disable
