@@ -35,7 +35,6 @@ import (
 	"net"
 	"net/url"
 	"regexp"
-	"strings"
 	"sync/atomic"
 	"time"
 
@@ -395,19 +394,6 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 		return !conn.IsClosed(), nil
 	}
 
-	switch strings.ToLower(c.cfg.QueryExecMode) {
-	case "exec":
-		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
-	case "simple_protocol":
-		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
-	case "cache_describe":
-		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
-	case "describe_exec":
-		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeDescribeExec
-	default:
-		pc.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheStatement
-	}
-
 	pool, err := pgxpool.NewWithConfig(ctx, pc)
 	if err != nil {
 		return nil, fmt.Errorf("create pool: %w", err)
@@ -557,13 +543,22 @@ func buildDSN(cfg *config.SQLConfig) string {
 		return cfg.Connection
 	}
 
+	// Build query string: start with user options, append search_path if schema is set
+	query := cfg.Options
+	if cfg.Schema != "" {
+		if query != "" {
+			query += "&"
+		}
+		query += "search_path=" + url.QueryEscape(cfg.Schema)
+	}
+
 	dsn := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(cfg.Username, cfg.Password),
 		Host:     net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
 		Path:     "/" + cfg.Database,
 		RawPath:  "/" + url.PathEscape(cfg.Database),
-		RawQuery: cfg.Options,
+		RawQuery: query,
 	}
 	return dsn.String()
 }

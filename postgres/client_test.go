@@ -59,6 +59,31 @@ func TestBuildDSN(t *testing.T) {
 			},
 			expected: "postgres://override:pass@remote:9999/otherdb",
 		},
+		{
+			name: "with schema only",
+			cfg: config.SQLConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Username: "user",
+				Password: "password",
+				Database: "db",
+				Schema:   "myschema",
+			},
+			expected: "postgres://user:password@localhost:5432/db?search_path=myschema",
+		},
+		{
+			name: "with options and schema",
+			cfg: config.SQLConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Username: "user",
+				Password: "password",
+				Database: "db",
+				Options:  "sslmode=disable",
+				Schema:   "inventory",
+			},
+			expected: "postgres://user:password@localhost:5432/db?sslmode=disable&search_path=inventory",
+		},
 	}
 
 	for _, tt := range tests {
