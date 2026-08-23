@@ -127,7 +127,7 @@ func NewClientWithHook(cfg *config.SQLConfig, logger *zerolog.Logger,
 // internal helpers below — not part of public API
 
 func (c *Client) connectInitial() error {
-	maskedDSN := maskPassword(buildDSN(c.cfg))
+	maskedDSN := maskPassword(buildDisplayDSN(c.cfg))
 	pool, err := c.createPoolWithRetry(context.Background())
 	if err != nil {
 		c.log.Error().
@@ -161,7 +161,7 @@ func (c *Client) Pool() *pgxpool.Pool {
 }
 
 func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
-	maskedDSN := maskPassword(buildDSN(c.cfg))
+	maskedDSN := maskPassword(buildDisplayDSN(c.cfg))
 	baseDelay := time.Second
 	for attempt := 1; attempt <= 20; attempt++ {
 		if c.IsClosed() {
@@ -543,7 +543,24 @@ func buildDSN(cfg *config.SQLConfig) string {
 		return cfg.Connection
 	}
 
-	// Build query string: start with user options, append search_path if schema is set
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(cfg.Username, cfg.Password),
+		Host:     net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
+		Path:     "/" + cfg.Database,
+		RawPath:  "/" + url.PathEscape(cfg.Database),
+		RawQuery: cfg.Options,
+	}
+	return dsn.String()
+}
+
+// buildDisplayDSN returns a DSN string for logging purposes.
+// Includes search_path so the schema is visible in log output.
+func buildDisplayDSN(cfg *config.SQLConfig) string {
+	if cfg.Connection != "" {
+		return cfg.Connection
+	}
+
 	query := cfg.Options
 	if cfg.Schema != "" {
 		if query != "" {

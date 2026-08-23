@@ -60,6 +60,36 @@ func TestBuildDSN(t *testing.T) {
 			expected: "postgres://override:pass@remote:9999/otherdb",
 		},
 		{
+			name: "schema is not included in connection DSN",
+			cfg: config.SQLConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Username: "user",
+				Password: "password",
+				Database: "db",
+				Schema:   "myschema",
+			},
+			expected: "postgres://user:password@localhost:5432/db",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildDSN(&tt.cfg)
+			if got != tt.expected {
+				t.Errorf("buildDSN() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestBuildDisplayDSN(t *testing.T) {
+	tests := []struct {
+		name     string
+		cfg      config.SQLConfig
+		expected string
+	}{
+		{
 			name: "with schema only",
 			cfg: config.SQLConfig{
 				Host:     "localhost",
@@ -84,13 +114,25 @@ func TestBuildDSN(t *testing.T) {
 			},
 			expected: "postgres://user:password@localhost:5432/db?sslmode=disable&search_path=inventory",
 		},
+		{
+			name: "no schema — same as buildDSN",
+			cfg: config.SQLConfig{
+				Host:     "localhost",
+				Port:     5432,
+				Username: "user",
+				Password: "password",
+				Database: "db",
+				Options:  "sslmode=disable",
+			},
+			expected: "postgres://user:password@localhost:5432/db?sslmode=disable",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildDSN(&tt.cfg)
+			got := buildDisplayDSN(&tt.cfg)
 			if got != tt.expected {
-				t.Errorf("buildDSN() = %v, want %v", got, tt.expected)
+				t.Errorf("buildDisplayDSN() = %v, want %v", got, tt.expected)
 			}
 		})
 	}
