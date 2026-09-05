@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -53,7 +54,7 @@ type Client struct {
 	// Internal singleton producer for shortcuts
 	writer     *kafka.Writer
 	writerLock sync.RWMutex
-	closed     atomic.Uint32
+	closed     atomic.Bool
 }
 
 // NewClient creates a new Kafka factory based on segmentio/kafka-go.
@@ -111,13 +112,26 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 		SASLMechanism: mechanism,
 	}
 
-	brokerList := strings.Split(cfg.Brokers, ",")
+	rawBrokers := strings.Split(cfg.Brokers, ",")
+	brokerList := make([]string, 0, len(rawBrokers))
+	for _, b := range rawBrokers {
+		if trimmed := strings.TrimSpace(b); trimmed != "" {
+			brokerList = append(brokerList, trimmed)
+		}
+	}
+
+	if len(brokerList) == 0 {
+		return nil, errors.New("no kafka brokers configured")
+	}
 
 	// Fast fail check - try all brokers, succeed if at least one is reachable
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer dialCancel()
+
 	var lastErr error
 	var connected bool
 	for _, broker := range brokerList {
-		conn, err := dialer.DialContext(context.Background(), "tcp", strings.TrimSpace(broker))
+		conn, err := dialer.DialContext(dialCtx, "tcp", broker)
 		if err == nil {
 			_ = conn.Close()
 			connected = true
@@ -128,7 +142,7 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 
 	if !connected {
 		if lastErr != nil {
-			return nil, errors.New("all kafka brokers unreachable: " + lastErr.Error())
+			return nil, fmt.Errorf("all kafka brokers unreachable: %w", lastErr)
 		}
 		return nil, errors.New("no kafka brokers configured")
 	}
@@ -146,6 +160,9 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 // NewWriter creates a new Kafka Writer (Producer).
 // Writers in kafka-go automatically handle retries, connection drops, and load balancing.
 func (k *Client) NewWriter() *kafka.Writer {
+	if k == nil {
+		return nil
+	}
 	return &kafka.Writer{
 		Addr: kafka.TCP(k.brokers...),
 		Transport: &kafka.Transport{
@@ -166,6 +183,9 @@ func (k *Client) NewWriter() *kafka.Writer {
 // Readers automatically handle rebalancing and offset commits.
 // Usage: msg, err := reader.ReadMessage(ctx)
 func (k *Client) NewReader(topic, groupID string) *kafka.Reader {
+	if k == nil {
+		return nil
+	}
 	return kafka.NewReader(kafka.ReaderConfig{
 		Brokers: k.brokers,
 		GroupID: groupID,
@@ -178,7 +198,7 @@ func (k *Client) NewReader(topic, groupID string) *kafka.Reader {
 // Publish is a convenient shortcut to send a single message synchronously.
 // It accepts a 'key' for partition ordering guarantees.
 func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) error {
-	if k.closed.Load() == 1 {
+	if k == nil || k.closed.Load() {
 		return ErrClientClosed
 	}
 
@@ -188,7 +208,7 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 
 	if w == nil {
 		k.writerLock.Lock()
-		if k.closed.Load() == 1 {
+		if k.closed.Load() {
 			k.writerLock.Unlock()
 			return ErrClientClosed
 		}
@@ -207,9 +227,9 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 		msg.Key = key
 	}
 
+	var span trace.Span
 	if k.cfg.EnableTelemetry {
 		tracer := otel.Tracer("nvx-go-driver/kafka")
-		var span trace.Span
 		ctx, span = tracer.Start(ctx, "Kafka Publish", trace.WithSpanKind(trace.SpanKindProducer))
 		span.SetAttributes(
 			attribute.String("messaging.system", "kafka"),
@@ -219,12 +239,16 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 	}
 
 	// WriteMessages blocks until the message is written or the context is cancelled.
-	return w.WriteMessages(ctx, msg)
+	err := w.WriteMessages(ctx, msg)
+	if err != nil && span != nil {
+		span.RecordError(err)
+	}
+	return err
 }
 
 // Close gracefully flushes and closes the internal singleton writer if initialized.
 func (k *Client) Close() error {
-	if !k.closed.CompareAndSwap(0, 1) {
+	if k == nil || !k.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 

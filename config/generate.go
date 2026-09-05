@@ -46,7 +46,7 @@ func LoadInto[T any](configFile string, c *T) error {
 		}
 
 		// 3. Write Config Back (Persist Defaults / Updates)
-		// This ensures that if the user deleted a key, it comes back with the default value.
+		// This ensures that if the user deleted a key or a new field was added, it persists back with the default value.
 		newData, marshalErr := yaml.Marshal(c)
 		if marshalErr != nil {
 			return fmt.Errorf("failed to marshal config: %w", marshalErr)
@@ -83,7 +83,7 @@ func LoadInto[T any](configFile string, c *T) error {
 //   - A string field with value "" will receive the default value
 //
 // If you need to explicitly set a field to its zero value, set it after calling SetDefaults.
-func SetDefaults(ptr interface{}, defaultTag string) error {
+func SetDefaults(ptr any, defaultTag string) error {
 	if reflect.TypeOf(ptr).Kind() != reflect.Pointer {
 		return fmt.Errorf("not a pointer")
 	}

@@ -276,6 +276,7 @@ func (c *Consumer) consume(
 			func() {
 				defer c.activeMsgs.Add(-1)
 
+				var span trace.Span
 				defer func() {
 					if r := recover(); r != nil {
 						c.client.log.Error().
@@ -283,26 +284,29 @@ func (c *Consumer) consume(
 							Interface("panic", r).
 							Msg("Consumer panic recovered")
 
+						if span != nil {
+							span.RecordError(fmt.Errorf("consumer panic: %v", r))
+						}
+
 						if !autoAck {
 							_ = msg.Nack(false, true)
 						}
 					}
+					if span != nil {
+						span.End()
+					}
 				}()
 
-				var action Action
 				if c.client.cfg.EnableTelemetry {
 					tracer := otel.Tracer("nvx-go-driver/rabbitmq")
-					var span trace.Span
 					ctx, span = tracer.Start(ctx, "RabbitMQ Consume", trace.WithSpanKind(trace.SpanKindConsumer))
 					span.SetAttributes(
 						attribute.String("messaging.system", "rabbitmq"),
 						attribute.String("messaging.destination", queue),
 					)
-					action = handler(ctx, msg)
-					span.End()
-				} else {
-					action = handler(ctx, msg)
 				}
+
+				action := handler(ctx, msg)
 
 				if !autoAck {
 					switch action {

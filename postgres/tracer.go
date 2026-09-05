@@ -20,13 +20,50 @@ func newPrivateTracer() *privateTracer {
 	}
 }
 
-func (t *privateTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
-	// Extract basic operation name to prevent full SQL PII leak
-	op := "QUERY"
-	if fields := strings.Fields(data.SQL); len(fields) > 0 {
-		op = strings.ToUpper(fields[0])
+// extractSQLOperation extracts the first SQL keyword without allocating slices.
+// It trims whitespace and skips leading block (/* ... */) or line (-- ...) comments.
+func extractSQLOperation(sql string) string {
+	sql = strings.TrimSpace(sql)
+	if sql == "" {
+		return "QUERY"
 	}
 
+	for {
+		if strings.HasPrefix(sql, "/*") {
+			end := strings.Index(sql, "*/")
+			if end == -1 {
+				return "QUERY"
+			}
+			sql = strings.TrimSpace(sql[end+2:])
+			continue
+		}
+		if strings.HasPrefix(sql, "--") {
+			end := strings.IndexByte(sql, '\n')
+			if end == -1 {
+				return "QUERY"
+			}
+			sql = strings.TrimSpace(sql[end+1:])
+			continue
+		}
+		break
+	}
+
+	if sql == "" {
+		return "QUERY"
+	}
+
+	end := strings.IndexAny(sql, " \t\r\n(;")
+	if end == -1 {
+		end = len(sql)
+	}
+	if end > 16 {
+		end = 16
+	}
+	return strings.ToUpper(sql[:end])
+}
+
+func (t *privateTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	op := extractSQLOperation(data.SQL)
 	ctx, _ = t.tracer.Start(ctx, op, trace.WithSpanKind(trace.SpanKindClient))
 	return ctx
 }

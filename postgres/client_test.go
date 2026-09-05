@@ -209,4 +209,3 @@ func TestMetrics_Structure(t *testing.T) {
 		t.Errorf("expected 0 health (unhealthy) when no pool, got %f", health)
 	}
 }
-

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,7 +95,7 @@ func (r *Client) connect() error {
 		if r.cfg.TLS {
 			scheme = "amqps"
 		}
-		
+
 		vhost := r.cfg.VHost
 		if vhost == "" {
 			vhost = "/"
@@ -105,7 +106,7 @@ func (r *Client) connect() error {
 		dsn = (&url.URL{
 			Scheme: scheme,
 			User:   url.UserPassword(r.cfg.Username, r.cfg.Password),
-			Host:   net.JoinHostPort(r.cfg.Host, fmt.Sprintf("%d", r.cfg.Port)),
+			Host:   net.JoinHostPort(r.cfg.Host, strconv.Itoa(r.cfg.Port)),
 			Path:   vhost,
 		}).String()
 	}
@@ -190,12 +191,11 @@ func (r *Client) reconnectLoop() {
 			make(chan *amqp.Error, 1),
 		)
 
-		err := <-closeChan
-
+		var err *amqp.Error
 		select {
 		case <-r.done:
 			return
-		default:
+		case err = <-closeChan:
 		}
 
 		// connection already replaced
@@ -258,11 +258,18 @@ func (r *Client) reconnectLoop() {
 
 // IsReady returns true if the client is ready.
 func (r *Client) IsReady() bool {
+	if r == nil {
+		return false
+	}
 	return r.ready.Load()
 }
 
 // Connection returns the underlying amqp.Connection.
 func (r *Client) Connection() (*amqp.Connection, error) {
+	if r == nil {
+		return nil, errors.New("rabbitmq client is nil")
+	}
+
 	r.lock.RLock()
 
 	conn := r.conn
@@ -314,7 +321,7 @@ func (r *Client) Ping() error {
 
 // Close gracefully closes the client.
 func (r *Client) Close() error {
-	if !r.closed.CompareAndSwap(false, true) {
+	if r == nil || !r.closed.CompareAndSwap(false, true) {
 		return nil
 	}
 

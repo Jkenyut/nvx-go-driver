@@ -128,12 +128,11 @@ func (p *Publisher) reconnectLoop() {
 			make(chan *amqp.Error, 1),
 		)
 
-		err := <-closeChan
-
+		var err *amqp.Error
 		select {
 		case <-p.done:
 			return
-		default:
+		case err = <-closeChan:
 		}
 
 		// channel already replaced
@@ -269,6 +268,10 @@ func (p *Publisher) Publish(
 	mandatory bool,
 	immediate bool,
 ) error {
+	if msg == nil {
+		return errors.New("amqp message cannot be nil")
+	}
+
 	var lastErr error
 
 	if msg.MessageId == "" {

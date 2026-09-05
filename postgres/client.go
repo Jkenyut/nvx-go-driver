@@ -35,6 +35,7 @@ import (
 	"net"
 	"net/url"
 	"regexp"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -252,7 +253,11 @@ func (c *Client) BeginTx(ctx context.Context, txOptions *pgx.TxOptions) (pgx.Tx,
 	if pool == nil {
 		return nil, ErrClientClosed
 	}
-	return pool.BeginTx(ctx, *txOptions)
+	var opts pgx.TxOptions
+	if txOptions != nil {
+		opts = *txOptions
+	}
+	return pool.BeginTx(ctx, opts)
 }
 
 // RunInTx executes the provided function within a transaction.
@@ -506,7 +511,10 @@ func (c *Client) monitor() {
 				c.healthy.Store(true)
 				if old != nil {
 					go func(p *pgxpool.Pool) {
-						time.Sleep(5 * time.Second)
+						select {
+						case <-c.drain:
+						case <-time.After(5 * time.Second):
+						}
 						p.Close()
 						c.log.Info().Msg("Old pool closed")
 					}(old)
@@ -546,7 +554,7 @@ func buildDSN(cfg *config.SQLConfig) string {
 	dsn := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(cfg.Username, cfg.Password),
-		Host:     net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 		Path:     "/" + cfg.Database,
 		RawPath:  "/" + url.PathEscape(cfg.Database),
 		RawQuery: cfg.Options,
@@ -572,7 +580,7 @@ func buildDisplayDSN(cfg *config.SQLConfig) string {
 	dsn := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(cfg.Username, cfg.Password),
-		Host:     net.JoinHostPort(cfg.Host, fmt.Sprintf("%d", cfg.Port)),
+		Host:     net.JoinHostPort(cfg.Host, strconv.Itoa(cfg.Port)),
 		Path:     "/" + cfg.Database,
 		RawPath:  "/" + url.PathEscape(cfg.Database),
 		RawQuery: query,

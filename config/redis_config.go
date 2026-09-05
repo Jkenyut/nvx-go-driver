@@ -3,6 +3,9 @@ package config
 // WithDefaults applies sensible defaults for go-redis/v9 client configuration.
 // All time-based values are in **seconds** to match time.Duration usage.
 func (c *RedisConfig) WithDefaults() *RedisConfig {
+	if c == nil {
+		return nil
+	}
 	if c.Host == "" {
 		c.Host = "127.0.0.1"
 	}

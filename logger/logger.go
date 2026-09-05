@@ -27,8 +27,11 @@ package logger
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
@@ -37,7 +40,11 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var globalDiodeCloser io.Closer
+var (
+	closerMu          sync.Mutex
+	globalDiodeCloser io.Closer
+	initOnce          sync.Once
+)
 
 // InitFromConfig initializes the global zerolog logger using values from the
 // provided Listener configuration.
@@ -56,8 +63,8 @@ func InitFromConfig(cfg config.Listener) {
 	isProd := env == "production" || env == "prod"
 
 	if isProd {
-		// JSON output for log aggregation systems
-		writer = os.Stdout
+		// JSON output for log aggregation systems (wrapped to prevent closing os.Stdout)
+		writer = io.MultiWriter(os.Stdout)
 	} else {
 		// Pretty, colored output for local development and staging
 		writer = zerolog.ConsoleWriter{
@@ -83,8 +90,26 @@ func InitFromConfig(cfg config.Listener) {
 		}
 	}
 
-	wr := diode.NewWriter(writer, 1000, 10*time.Millisecond, func(_ int) {})
+	diodeSize := 1000
+	if isProd {
+		diodeSize = 10000
+	}
+	if sizeStr := os.Getenv("LOG_BUFFER_SIZE"); sizeStr != "" {
+		if s, err := strconv.Atoi(sizeStr); err == nil && s > 0 {
+			diodeSize = s
+		}
+	}
+
+	wr := diode.NewWriter(writer, diodeSize, 10*time.Millisecond, func(missed int) {
+		_, _ = fmt.Fprintf(os.Stderr, "[logger] warning: diode dropped %d log messages\n", missed)
+	})
+
+	closerMu.Lock()
+	if globalDiodeCloser != nil {
+		_ = globalDiodeCloser.Close()
+	}
 	globalDiodeCloser = wr
+	closerMu.Unlock()
 
 	logContext := zerolog.New(wr).
 		With().
@@ -105,6 +130,8 @@ func InitFromConfig(cfg config.Listener) {
 // Close flushes all remaining logs in the buffer and stops the background
 // logging goroutine. This should be called during graceful shutdown.
 func Close() error {
+	closerMu.Lock()
+	defer closerMu.Unlock()
 	if globalDiodeCloser != nil {
 		err := globalDiodeCloser.Close()
 		globalDiodeCloser = nil
@@ -118,21 +145,25 @@ func Close() error {
 // If the logger has not been initialized (e.g., InitFromConfig was not called),
 // it performs a fallback initialization with empty/default values.
 func L() *zerolog.Logger {
-	if zerolog.DefaultContextLogger == nil {
-		InitFromConfig(config.Listener{})
-	}
+	initOnce.Do(func() {
+		if zerolog.DefaultContextLogger == nil {
+			InitFromConfig(config.Listener{})
+		}
+	})
 	return zerolog.DefaultContextLogger
 }
 
 // Ctx returns a logger instance with OpenTelemetry trace_id and span_id from context.
 func Ctx(ctx context.Context) *zerolog.Logger {
 	l := L().With().Logger()
-	spanCtx := trace.SpanContextFromContext(ctx)
-	if spanCtx.HasTraceID() {
-		l = l.With().Str("trace_id", spanCtx.TraceID().String()).Logger()
-	}
-	if spanCtx.HasSpanID() {
-		l = l.With().Str("span_id", spanCtx.SpanID().String()).Logger()
+	if ctx != nil {
+		spanCtx := trace.SpanContextFromContext(ctx)
+		if spanCtx.HasTraceID() {
+			l = l.With().Str("trace_id", spanCtx.TraceID().String()).Logger()
+		}
+		if spanCtx.HasSpanID() {
+			l = l.With().Str("span_id", spanCtx.SpanID().String()).Logger()
+		}
 	}
 	return &l
 }

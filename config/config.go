@@ -101,10 +101,6 @@ type SQLConfig struct {
 	// UseMock enables mock database implementation
 	// Useful for testing and local development
 	UseMock bool `yaml:"use_mock" json:"use_mock" default:"false"`
-
-	// QueryExecMode configures pgx query execution mode.
-	// Use "exec" or "simple_protocol" for pgBouncer transaction mode.
-	QueryExecMode string `yaml:"query_exec_mode" json:"query_exec_mode" default:"cache_statement"`
 }
 
 // RabbitMQConfig holds the RabbitMQ configuration.
@@ -123,7 +119,7 @@ type RabbitMQConfig struct {
 	VHost string `yaml:"vhost" default:"/" desc:"config:rabbitmq:vhost"`
 
 	// Host RabbitMQ server host/address
-	Host string `yaml:"host" default:"0.0.0.0" desc:"config:rabbitmq:host"`
+	Host string `yaml:"host" default:"127.0.0.1" desc:"config:rabbitmq:host"`
 
 	// Port RabbitMQ server port
 	Port int `yaml:"port" default:"5672" desc:"config:rabbitmq:port"`
@@ -178,7 +174,7 @@ type RedisConfig struct {
 	ApplicationName string `yaml:"applicationName" default:"" desc:"config:redis:applicationName"`
 
 	// Host Redis server host/address
-	Host string `yaml:"host" default:"0.0.0.0" desc:"config:redis:host"`
+	Host string `yaml:"host" default:"127.0.0.1" desc:"config:redis:host"`
 
 	// Port Redis server port
 	Port int `yaml:"port" default:"6379" desc:"config:redis:port"`
@@ -206,7 +202,7 @@ type RedisConfig struct {
 	MaxError int `yaml:"maxError" default:"5" desc:"config:redis:maxError"`
 
 	// PoolSize maximum total Redis connections in pool
-	PoolSize int `yaml:"poolSize" default:"30" desc:"config:redis:poolSize"`
+	PoolSize int `yaml:"poolSize" default:"10" desc:"config:redis:poolSize"`
 
 	// PoolTimeout maximum wait time for acquiring connection from pool
 	PoolTimeout int `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
@@ -216,7 +212,7 @@ type RedisConfig struct {
 
 	// MinIdleConn minimum idle connections maintained
 	// Helps improve performance by keeping warm connections
-	MinIdleConn int `yaml:"minIdleConn" default:"7" desc:"config:redis:minIdleConn"`
+	MinIdleConn int `yaml:"minIdleConn" default:"5" desc:"config:redis:minIdleConn"`
 
 	// MaxIdleConn maximum idle connections allowed
 	// Excess idle connections may be closed automatically
@@ -241,7 +237,7 @@ type KafkaConfig struct {
 	// Brokers Kafka broker addresses (comma-separated)
 	// Example:
 	// broker1:9092,broker2:9092
-	Brokers string `yaml:"brokers" default:"0.0.0.0:9092" desc:"config:kafka:brokers"`
+	Brokers string `yaml:"brokers" default:"127.0.0.1:9092" desc:"config:kafka:brokers"`
 
 	// Registry schema registry address
 	// Used for Avro/Schema-based serialization

@@ -8,8 +8,8 @@ import (
 // WithDefaults applies sensible, battle-tested defaults for pgx/v5 pool
 // All time-based values are in **seconds** to match time.Duration usage
 func (c *SQLConfig) WithDefaults() *SQLConfig {
-	if !c.Enable {
-		return c // disabled → no changes
+	if c == nil || !c.Enable {
+		return c // nil or disabled → no changes
 	}
 
 	// Connection basics
