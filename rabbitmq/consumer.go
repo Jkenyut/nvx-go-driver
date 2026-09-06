@@ -135,7 +135,7 @@ func (c *Consumer) Start(
 ) {
 	if !c.started.CompareAndSwap(false, true) {
 		if c.client != nil && c.client.log != nil {
-			c.client.log.Warn().Str("queue", c.queue).Msg("Consumer Start() ignored: already started")
+			c.client.log.Warn("Consumer Start() ignored: already started", "queue", c.queue)
 		}
 		return
 	}
@@ -168,10 +168,9 @@ func (c *Consumer) loop(
 
 		err := c.consume(ctx, handler)
 		if err != nil {
-			c.client.log.Error().
-				Err(err).
-				Str("queue", queue).
-				Msg("Consumer stopped")
+			c.client.log.Error("Consumer stopped",
+				"error", err,
+				"queue", queue)
 		}
 
 		select {
@@ -279,10 +278,9 @@ func (c *Consumer) consume(
 				var span trace.Span
 				defer func() {
 					if r := recover(); r != nil {
-						c.client.log.Error().
-							Str("queue", queue).
-							Interface("panic", r).
-							Msg("Consumer panic recovered")
+						c.client.log.Error("Consumer panic recovered",
+							"queue", queue,
+							"panic", r)
 
 						if span != nil {
 							span.RecordError(fmt.Errorf("consumer panic: %v", r))
@@ -320,10 +318,9 @@ func (c *Consumer) consume(
 						// User handles Ack/Nack manually
 					default:
 						// Safe fallback: Discard on unknown action
-						c.client.log.Warn().
-							Int("action", int(action)).
-							Str("queue", queue).
-							Msg("Unknown consumer action, discarding message")
+						c.client.log.Warn("Unknown consumer action, discarding message",
+							"action", int(action),
+							"queue", queue)
 						_ = msg.Nack(false, false)
 					}
 				}
@@ -373,7 +370,7 @@ func (c *Consumer) Close() error {
 			select {
 			case <-timeout:
 				if c.client != nil && c.client.log != nil {
-					c.client.log.Warn().Str("queue", c.queue).Msg("Consumer graceful shutdown timeout, forcing channel close")
+					c.client.log.Warn("Consumer graceful shutdown timeout, forcing channel close", "queue", c.queue)
 				}
 				break waitLoop
 			case <-ticker.C:
@@ -393,7 +390,7 @@ func (c *Consumer) Close() error {
 	case <-waitDone:
 	case <-time.After(2 * time.Second):
 		if c.client != nil && c.client.log != nil {
-			c.client.log.Error().Str("queue", c.queue).Msg("Consumer Close() forced exit: goroutine leaked due to hung handler")
+			c.client.log.Error("Consumer Close() forced exit: goroutine leaked due to hung handler", "queue", c.queue)
 		}
 	}
 

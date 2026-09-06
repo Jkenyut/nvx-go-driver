@@ -6,14 +6,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
-	"github.com/rs/zerolog"
 	"github.com/segmentio/kafka-go"
 	"github.com/segmentio/kafka-go/sasl"
 	"github.com/segmentio/kafka-go/sasl/plain"
@@ -48,7 +47,7 @@ func (b *SmartBalancer) Balance(msg kafka.Message, partitions ...int) int {
 type Client struct {
 	cfg     *config.KafkaConfig
 	dialer  *kafka.Dialer
-	log     *zerolog.Logger
+	log     *slog.Logger
 	brokers []string
 
 	// Internal singleton producer for shortcuts
@@ -64,9 +63,9 @@ type Client struct {
 //   - Host: "127.0.0.1:9092" (if empty)
 //   - SecurityProtocol: "SASL_SSL" (if username set but protocol empty)
 //   - Mechanism: "PLAIN"
-func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.KafkaConfig, logger *slog.Logger) (*Client, error) {
 	if logger == nil {
-		logger = driverLogger.L()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	if !cfg.Enable {
@@ -147,7 +146,7 @@ func NewClient(cfg *config.KafkaConfig, logger *zerolog.Logger) (*Client, error)
 		return nil, errors.New("no kafka brokers configured")
 	}
 
-	logger.Info().Str("brokers", cfg.Brokers).Msg("Kafka config valid and reachable")
+	logger.Info("Kafka config valid and reachable", "brokers", cfg.Brokers)
 
 	return &Client{
 		cfg:     cfg,

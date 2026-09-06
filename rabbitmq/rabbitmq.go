@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"strconv"
@@ -13,15 +14,13 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/rs/zerolog"
 )
 
 // Client represents a RabbitMQ client.
 type Client struct {
 	cfg *config.RabbitMQConfig
-	log *zerolog.Logger
+	log *slog.Logger
 
 	lock sync.RWMutex
 
@@ -37,10 +36,10 @@ type Client struct {
 // NewClient creates a new RabbitMQ client.
 func NewClient(
 	cfg *config.RabbitMQConfig,
-	logger *zerolog.Logger,
+	logger *slog.Logger,
 ) (*Client, error) {
 	if logger == nil {
-		logger = driverLogger.L()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	if !cfg.Enable {
@@ -149,10 +148,9 @@ func (r *Client) connect() error {
 
 	r.ready.Store(true)
 
-	r.log.Info().
-		Str("host", r.cfg.Host).
-		Int("port", r.cfg.Port).
-		Msg("RabbitMQ connected")
+	r.log.Info("RabbitMQ connected",
+		"host", r.cfg.Host,
+		"port", r.cfg.Port)
 
 	return nil
 }
@@ -214,12 +212,10 @@ func (r *Client) reconnectLoop() {
 		r.ready.Store(false)
 
 		if err != nil {
-			r.log.Warn().
-				Err(err).
-				Msg("RabbitMQ connection lost")
+			r.log.Warn("RabbitMQ connection lost",
+				"error", err)
 		} else {
-			r.log.Warn().
-				Msg("RabbitMQ connection closed unexpectedly")
+			r.log.Warn("RabbitMQ connection closed unexpectedly")
 		}
 
 		for {
@@ -233,15 +229,13 @@ func (r *Client) reconnectLoop() {
 			if errs == nil {
 				backoff = r.reconnectDuration()
 
-				r.log.Info().
-					Msg("RabbitMQ reconnected")
+				r.log.Info("RabbitMQ reconnected")
 
 				break
 			}
 
-			r.log.Error().
-				Err(errs).
-				Msg("RabbitMQ reconnect failed")
+			r.log.Error("RabbitMQ reconnect failed",
+				"error", errs)
 
 			select {
 			case <-r.done:

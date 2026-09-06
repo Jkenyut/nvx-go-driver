@@ -4,10 +4,9 @@ import (
 	"testing"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	"github.com/rs/zerolog"
 )
 
-func TestWithDefaults(t *testing.T) {
+func TestBuildRedisOptions(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    config.RedisConfig
@@ -81,10 +80,9 @@ func TestWithDefaults(t *testing.T) {
 }
 
 func TestNewClient_Disabled(t *testing.T) {
-	logger := zerolog.Nop()
 	cfg := config.RedisConfig{Enable: false}
 
-	client, err := NewClient(&cfg, &logger)
+	client, err := NewClient(&cfg, nil)
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}

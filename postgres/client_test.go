@@ -5,16 +5,14 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	"github.com/rs/zerolog"
 )
 
 func TestNewClient_Disabled(t *testing.T) {
-	logger := zerolog.Nop()
 	cfg := config.SQLConfig{
 		Enable: false,
 	}
 
-	client, err := NewClient(&cfg, &logger)
+	client, err := NewClient(&cfg, nil)
 	if err == nil {
 		t.Error("expected error when config is disabled, got nil")
 	}

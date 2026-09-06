@@ -10,7 +10,7 @@
 //   - Graceful shutdown with connection draining
 //   - Exponential backoff with jitter for startup and reconnect attempts
 //   - Built-in Prometheus-compatible metrics
-//   - Structured logging integration (zerolog)
+//   - Structured logging integration (log/slog)
 //   - Sensible, CPU-aware defaults via config.SQLConfig.WithDefaults()
 //
 // Example:
@@ -30,6 +30,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/big"
 	"net"
@@ -40,11 +41,9 @@ import (
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rs/zerolog"
 )
 
 var (
@@ -66,7 +65,7 @@ type Client struct {
 	reconnect atomic.Int64 // reconnect counter
 	healthy   atomic.Bool  // cached health status for metrics
 
-	log *zerolog.Logger
+	log *slog.Logger
 	// AfterConnect is called after a new connection is established
 	afterConnect func(ctx context.Context, conn *pgx.Conn) error
 
@@ -87,18 +86,18 @@ type Metrics struct {
 
 // NewClient creates a new Client with default hook (nil AfterConnect).
 // It applies defaults, connects to the database, and starts background monitoring.
-func NewClient(cfg *config.SQLConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.SQLConfig, logger *slog.Logger) (*Client, error) {
 	return NewClientWithHook(cfg, logger, nil, nil)
 }
 
 // NewClientWithHook creates a new Client with optional AfterConnect hook.
 // The hook is called for every new physical connection (useful for SET commands).
-func NewClientWithHook(cfg *config.SQLConfig, logger *zerolog.Logger,
+func NewClientWithHook(cfg *config.SQLConfig, logger *slog.Logger,
 	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
 	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
 ) (*Client, error) {
 	if logger == nil {
-		logger = driverLogger.L()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	cfg = cfg.WithDefaults()
@@ -131,21 +130,19 @@ func (c *Client) connectInitial() error {
 	maskedDSN := maskPassword(buildDisplayDSN(c.cfg))
 	pool, err := c.createPoolWithRetry(context.Background())
 	if err != nil {
-		c.log.Error().
-			Str("dsn", maskedDSN).
-			Str("schema", c.cfg.Schema).
-			Err(err).
-			Msg("Database connection failed")
+		c.log.Error("Database connection failed",
+			"dsn", maskedDSN,
+			"schema", c.cfg.Schema,
+			"error", err)
 		return err
 	}
 	c.setPool(pool, false)
 	c.healthy.Store(true)
-	c.log.Info().
-		Str("dsn", maskedDSN).
-		Str("schema", c.cfg.Schema).
-		Int("max_conns", c.cfg.MaxConn).
-		Int("min_conns", c.cfg.MinConn).
-		Msg("Database connected successfully")
+	c.log.Info("Database connected successfully",
+		"dsn", maskedDSN,
+		"schema", c.cfg.Schema,
+		"max_conns", c.cfg.MaxConn,
+		"min_conns", c.cfg.MinConn)
 	return nil
 }
 
@@ -173,11 +170,10 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 		pool, err := c.createPool(pctx)
 		cancel()
 		if err == nil {
-			c.log.Info().
-				Str("dsn", maskedDSN).
-				Str("schema", c.cfg.Schema).
-				Int("attempt", attempt).
-				Msg("Database connected")
+			c.log.Info("Database connected",
+				"dsn", maskedDSN,
+				"schema", c.cfg.Schema,
+				"attempt", attempt)
 			return pool, nil
 		}
 
@@ -187,13 +183,12 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 		}
 		backoff += jitter(backoff / 2)
 
-		c.log.Warn().
-			Str("dsn", maskedDSN).
-			Str("schema", c.cfg.Schema).
-			Int("attempt", attempt).
-			Err(err).
-			Dur("retry_in", backoff).
-			Msg("Connection failed")
+		c.log.Warn("Database connection retry",
+			"dsn", maskedDSN,
+			"schema", c.cfg.Schema,
+			"attempt", attempt,
+			"error", err,
+			"retry_in", backoff)
 
 		select {
 		case <-ctx.Done():
@@ -422,12 +417,12 @@ func (c *Client) Close() error {
 		return nil // already closed
 	}
 
-	c.log.Info().Msg("Initiating graceful shutdown of PGXClient")
+	c.log.Info("Initiating graceful shutdown of PGXClient")
 	close(c.drain)
 
 	poolValue := c.pool.Load()
 	if poolValue == nil {
-		c.log.Info().Dur("uptime", time.Since(c.started)).Msg("PGXClient closed (no pool)")
+		c.log.Info("PGXClient closed (no pool)", "uptime", time.Since(c.started))
 		return nil
 	}
 	pool := poolValue.(*pgxpool.Pool)
@@ -445,20 +440,18 @@ func (c *Client) Close() error {
 	for {
 		select {
 		case <-closedChan:
-			c.log.Info().
-				Dur("uptime", time.Since(c.started)).
-				Int64("total_reconnects", c.reconnect.Load()).
-				Msg("PGXClient gracefully shut down")
+			c.log.Info("PGXClient gracefully shut down",
+				"uptime", time.Since(c.started),
+				"total_reconnects", c.reconnect.Load())
 			return nil
 		case <-timeout:
-			c.log.Warn().Msg("Shutdown timeout — abandoning pool (connections may leak)")
+			c.log.Warn("Shutdown timeout — abandoning pool (connections may leak)")
 			return nil
 		case <-ticker.C:
 			stat := pool.Stat()
-			c.log.Debug().
-				Int32("acquired", stat.AcquiredConns()).
-				Int32("idle", stat.IdleConns()).
-				Msg("Waiting for connections to be released")
+			c.log.Debug("Waiting for connections to be released",
+				"acquired", stat.AcquiredConns(),
+				"idle", stat.IdleConns())
 		}
 	}
 }
@@ -504,7 +497,7 @@ func (c *Client) monitor() {
 				continue
 			}
 
-			c.log.Warn().Msg("Pool unhealthy → reconnecting")
+			c.log.Warn("Pool unhealthy → reconnecting")
 			if newPool, err := c.createPoolWithRetry(context.Background()); err == nil {
 				old := c.Pool()
 				c.setPool(newPool, true)
@@ -516,10 +509,10 @@ func (c *Client) monitor() {
 						case <-time.After(5 * time.Second):
 						}
 						p.Close()
-						c.log.Info().Msg("Old pool closed")
+						c.log.Info("Old pool closed")
 					}(old)
 				}
-				c.log.Info().Int64("reconnects", c.reconnect.Load()).Msg("Pool swapped")
+				c.log.Info("Pool swapped", "reconnects", c.reconnect.Load())
 			}
 		}
 	}

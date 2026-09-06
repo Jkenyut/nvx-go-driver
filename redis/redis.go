@@ -6,16 +6,15 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"time"
 
 	"github.com/Jkenyut/nvx-go-driver/config"
-	driverLogger "github.com/Jkenyut/nvx-go-driver/logger"
 	"github.com/bytedance/sonic"
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"github.com/redis/go-redis/v9"
-	"github.com/rs/zerolog"
 )
 
 // ErrClientNil is returned when an operation is attempted on a nil client.
@@ -26,7 +25,7 @@ var ErrClientNil = errors.New("redis client is nil")
 type Client struct {
 	client *redis.Client
 	cfg    *config.RedisConfig
-	log    *zerolog.Logger
+	log    *slog.Logger
 }
 
 // Metrics provides Prometheus-compatible lazy metric functions.
@@ -65,9 +64,9 @@ type Metrics struct {
 //	defer client.Close()
 //
 //	val, err := client.Client().Get(ctx, "key").Result()
-func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error) {
+func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
 	if logger == nil {
-		logger = driverLogger.L()
+		logger = slog.New(slog.DiscardHandler)
 	}
 
 	if !cfg.Enable {
@@ -136,11 +135,10 @@ func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error)
 		}
 
 		if i < maxAttempts {
-			logger.Warn().
-				Err(err).
-				Int("attempt", i).
-				Int("max_attempts", maxAttempts).
-				Msg("Redis connection failed, retrying...")
+			logger.Warn("Redis connection failed, retrying...",
+				"error", err,
+				"attempt", i,
+				"max_attempts", maxAttempts)
 			time.Sleep(time.Duration(cfg.StartInterval) * time.Second)
 		}
 	}
@@ -150,10 +148,9 @@ func NewClient(cfg *config.RedisConfig, logger *zerolog.Logger) (*Client, error)
 		return nil, fmt.Errorf("redis connection failed after %d attempts: %w", maxAttempts, err)
 	}
 
-	logger.Info().
-		Str("addr", opt.Addr).
-		Int("pool_size", cfg.PoolSize).
-		Msg("Redis connected successfully")
+	logger.Info("Redis connected successfully",
+		"addr", opt.Addr,
+		"pool_size", cfg.PoolSize)
 
 	return &Client{
 		client: rdb,
@@ -185,7 +182,7 @@ func (r *Client) Close() error {
 	if r == nil || r.client == nil {
 		return ErrClientNil
 	}
-	r.log.Info().Msg("Closing Redis client")
+	r.log.Info("Closing Redis client")
 	return r.client.Close()
 }
 

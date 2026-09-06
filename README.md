@@ -11,7 +11,7 @@
 - **Resilience**: Auto-reconnect logic customized for each protocol (PGX Pool, RabbitMQ Reconnect Loop, Kafka Dialer, etc.).
 - **Graceful Shutdown**: Built-in context handling and connection draining to prevent message loss.
 - **Observability**: Built-in Prometheus-compatible metrics.
-- **Structured Logging**: Integrated with `zerolog` featuring auto-caller and standard log hijacking.
+- **Structured Logging**: Fully agnostic using Go standard library `log/slog`. Accepts any `*slog.Logger` or `nil` (safe no-op via `slog.DiscardHandler`).
 - **Smart Defaults**: Minimal configuration needed (e.g., just `Enable: true` works for localhost).
 
 ## Installation
@@ -22,19 +22,15 @@ go get github.com/Jkenyut/nvx-go-driver
 
 ## Usage Examples
 
-### 1. Logger (Zerolog)
+### 1. Structured Logging (Go Standard Library `log/slog`)
 
-The logger automatically adapts to JSON in production and colored output in development. Standard Go logs are automatically hijacked into Zerolog!
+All drivers accept standard library `*slog.Logger`. You can pass `slog.Default()`, a custom logger, or `nil` (which safely discards logs with zero allocations).
 
 ```go
-import "github.com/Jkenyut/nvx-go-driver/logger"
-// ...
-logger.InitFromConfig(cfg.Listener)
-defer logger.Close() // Flush remaining logs on shutdown
+import "log/slog"
 
-// Use convenience methods anywhere in your app:
-logger.Info().Msg("Application started")
-logger.Error().Err(err).Msg("Something failed") // Includes file & line number automatically!
+// Pass your application logger, or nil for silent mode
+log := slog.Default()
 ```
 
 ### 2. PostgreSQL (Zero-Downtime)
@@ -44,7 +40,7 @@ Backed by `pgx/v5`. Supports graceful pool swapping on failure and transaction w
 ```go
 import "github.com/Jkenyut/nvx-go-driver/postgres"
 
-dbClient, err := postgres.NewClient(cfg.WithDefaults(), logger.L())
+dbClient, err := postgres.NewClient(cfg.WithDefaults(), log)
 defer dbClient.Close()
 
 // Simple query
@@ -64,7 +60,7 @@ Backed by `amqp091-go` with **infinite auto-reconnect**, topology helpers, and i
 ```go
 import "github.com/Jkenyut/nvx-go-driver/rabbitmq"
 
-mq, err := rabbitmq.NewClient(cfg, logger.L())
+mq, err := rabbitmq.NewClient(cfg, log)
 
 // Topology Setup Helper
 mq.DeclareExchange("my_exchange", "direct", true, false, false, false, nil)
@@ -93,7 +89,7 @@ Backed by `segmentio/kafka-go`. A highly modern, pure-go driver with native SASL
 ```go
 import "github.com/Jkenyut/nvx-go-driver/kafka"
 
-kafkaClient, err := kafka.NewClient(cfg, logger.L())
+kafkaClient, err := kafka.NewClient(cfg, log)
 
 // Shortcut: Simple Publish (Synchronous with Partition Key)
 err = kafkaClient.Publish(ctx, "my-topic", []byte("user_123"), []byte("payload data"))
@@ -118,7 +114,7 @@ Backed by `go-redis/v9`.
 ```go
 import "github.com/Jkenyut/nvx-go-driver/redis"
 
-redisClient, err := redis.NewClient(cfg, logger.L())
+redisClient, err := redis.NewClient(cfg, log)
 defer redisClient.Close()
 
 // Shortcut methods for quick JSON serialization

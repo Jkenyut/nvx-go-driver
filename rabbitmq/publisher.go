@@ -145,12 +145,9 @@ func (p *Publisher) reconnectLoop() {
 		}
 
 		if err != nil {
-			p.client.log.Warn().
-				Err(err).
-				Msg("RabbitMQ publisher channel lost")
+			p.client.log.Warn("RabbitMQ publisher channel lost", "error", err)
 		} else {
-			p.client.log.Warn().
-				Msg("RabbitMQ publisher channel closed unexpectedly")
+			p.client.log.Warn("RabbitMQ publisher channel closed unexpectedly")
 		}
 
 		for {
@@ -162,9 +159,7 @@ func (p *Publisher) reconnectLoop() {
 
 			newCh, e := p.client.NewChannel()
 			if e != nil {
-				p.client.log.Error().
-					Err(e).
-					Msg("Failed to recreate publisher channel")
+				p.client.log.Error("Failed to recreate publisher channel", "error", e)
 
 				select {
 				case <-p.done:
@@ -183,9 +178,7 @@ func (p *Publisher) reconnectLoop() {
 			if e != nil {
 				_ = newCh.Close()
 
-				p.client.log.Error().
-					Err(e).
-					Msg("Failed to enable publisher confirm mode")
+				p.client.log.Error("Failed to enable publisher confirm mode", "error", e)
 
 				select {
 				case <-p.done:
@@ -235,8 +228,7 @@ func (p *Publisher) reconnectLoop() {
 
 			backoff = time.Second
 
-			p.client.log.Info().
-				Msg("RabbitMQ publisher channel recreated")
+			p.client.log.Info("RabbitMQ publisher channel recreated")
 
 			break
 		}
