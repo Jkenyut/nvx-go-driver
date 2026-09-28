@@ -119,8 +119,8 @@ func TestMaskURL(t *testing.T) {
 			expected: "amqp://guest:****@localhost:5672/",
 		},
 		{
-			input:    "amqps://leo:ppppppp@rabbitmq.prod:5671/vhost",
-			expected: "amqps://leo:****@rabbitmq.prod:5671/vhost",
+			input:    "amqps://guest:******@rabbitmq.prod:5671/vhost",
+			expected: "amqps://guest:****@rabbitmq.prod:5671/vhost",
 		},
 	}
 
