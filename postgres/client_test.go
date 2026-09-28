@@ -12,12 +12,30 @@ func TestNewClient_Disabled(t *testing.T) {
 		Enable: false,
 	}
 
-	client, err := NewClient(&cfg, nil)
+	client, err := NewClient(&cfg)
 	if err == nil {
 		t.Error("expected error when config is disabled, got nil")
 	}
 	if client != nil {
 		t.Error("expected nil client when config is disabled, got object")
+	}
+}
+
+func TestNewClient_Options(t *testing.T) {
+	cfg := config.SQLConfig{
+		Enable: false, // will fail at disabled check before connect
+	}
+
+	called := false
+	opt := func(c *Client) {
+		called = true
+	}
+
+	_, _ = NewClient(&cfg, opt, WithLogger(nil), WithAfterConnect(nil), WithBeforeConnect(nil))
+	// Option is applied before connectInitial, but after cfg.Enable check
+	// Let's verify WithLogger doesn't panic
+	if called {
+		t.Log("Option executed")
 	}
 }
 
@@ -205,5 +223,21 @@ func TestMetrics_Structure(t *testing.T) {
 	health := metrics.PoolHealth()
 	if health != 0 {
 		t.Errorf("expected 0 health (unhealthy) when no pool, got %f", health)
+	}
+}
+
+func TestJitter(t *testing.T) {
+	// Values <= 100ms should return 0
+	if j := jitter(50 * time.Millisecond); j != 0 {
+		t.Errorf("jitter(50ms) = %v, want 0", j)
+	}
+
+	// Values > 100ms should return between [0, d)
+	d := 2 * time.Second
+	for i := 0; i < 50; i++ {
+		j := jitter(d)
+		if j < 0 || j >= d {
+			t.Fatalf("jitter(%v) = %v out of range", d, j)
+		}
 	}
 }

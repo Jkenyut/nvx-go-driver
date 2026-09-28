@@ -20,7 +20,7 @@ func TestBuildRedisOptions(t *testing.T) {
 				Port:        6379,
 				PoolSize:    10,
 				MinIdleConn: 5,
-				PoolTimeout: 30,
+				PoolTimeout: 30000,
 			},
 		},
 		{
@@ -34,7 +34,7 @@ func TestBuildRedisOptions(t *testing.T) {
 				Port:        6379,
 				PoolSize:    50,
 				MinIdleConn: 5,
-				PoolTimeout: 30,
+				PoolTimeout: 30000,
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestBuildRedisOptions(t *testing.T) {
 func TestNewClient_Disabled(t *testing.T) {
 	cfg := config.RedisConfig{Enable: false}
 
-	client, err := NewClient(&cfg, nil)
+	client, err := NewClient(&cfg, WithLogger(nil))
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}

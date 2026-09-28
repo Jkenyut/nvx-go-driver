@@ -1,7 +1,7 @@
 package config
 
 // WithDefaults applies sensible defaults for go-redis/v9 client configuration.
-// All time-based values are in **seconds** to match time.Duration usage.
+// All time-based values are in **milliseconds** to match time.Duration usage.
 func (c *RedisConfig) WithDefaults() *RedisConfig {
 	if c == nil {
 		return nil
@@ -22,16 +22,16 @@ func (c *RedisConfig) WithDefaults() *RedisConfig {
 		c.MaxIdleConn = 15
 	}
 	if c.PoolTimeout == 0 {
-		c.PoolTimeout = 30
+		c.PoolTimeout = 30000 // 30 seconds
 	}
 	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 5
+		c.ConnectTimeout = 5000 // 5 seconds
 	}
 	if c.ConnMaxLife == 0 {
-		c.ConnMaxLife = 600
+		c.ConnMaxLife = 600000 // 10 minutes
 	}
 	if c.StartInterval == 0 {
-		c.StartInterval = 2
+		c.StartInterval = 2000 // 2 seconds
 	}
 	if c.MaxError == 0 {
 		c.MaxError = 5

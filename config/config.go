@@ -66,26 +66,26 @@ type SQLConfig struct {
 	// Helps reduce latency by keeping reusable connections ready
 	MinConn int `yaml:"min_conn" json:"min_conn" default:"0"`
 
-	// MaxConnLifetime maximum lifetime of a connection in seconds
+	// MaxConnLifetime maximum lifetime of a connection in milliseconds
 	// Old connections will be recycled automatically
 	//
 	// Useful for:
 	// - load balancer rotation
 	// - stale connection prevention
 	// - failover handling
-	MaxConnLifetime int `yaml:"max_conn_lifetime_seconds" json:"max_conn_lifetime_seconds" default:"3600"`
+	MaxConnLifetime int `yaml:"max_conn_lifetime_ms" json:"max_conn_lifetime_ms" default:"3600000"`
 
-	// MaxConnIdleTime maximum idle duration before connection is closed
+	// MaxConnIdleTime maximum idle duration before connection is closed in milliseconds
 	// Helps release unused resources
-	MaxConnIdleTime int `yaml:"max_conn_idle_time_seconds" json:"max_conn_idle_time_seconds" default:"600"`
+	MaxConnIdleTime int `yaml:"max_conn_idle_time_ms" json:"max_conn_idle_time_ms" default:"600000"`
 
-	// HealthCheckPeriod interval for connection health checking
+	// HealthCheckPeriod interval for connection health checking in milliseconds
 	// Unhealthy/stale connections will be replaced automatically
-	HealthCheckPeriod int `yaml:"health_check_period_seconds" json:"health_check_period_seconds" default:"15"`
+	HealthCheckPeriod int `yaml:"health_check_period_ms" json:"health_check_period_ms" default:"15000"`
 
-	// ConnectTimeout maximum time to establish database connection
+	// ConnectTimeout maximum time to establish database connection in milliseconds
 	// Prevents hanging connection attempts
-	ConnectTimeout int `yaml:"connect_timeout_seconds" json:"connect_timeout_seconds" default:"10"`
+	ConnectTimeout int `yaml:"connect_timeout_ms" json:"connect_timeout_ms" default:"10000"`
 
 	// AutoReconnect automatically reconnects on connection failure
 	AutoReconnect bool `yaml:"auto_reconnect" json:"auto_reconnect" default:"true"`
@@ -137,14 +137,14 @@ type RabbitMQConfig struct {
 	// Not recommended for production environments.
 	InsecureSkipVerify bool `yaml:"insecureSkipVerify" default:"false" desc:"config:rabbitmq:insecureSkipVerify"`
 
-	// ReconnectDuration retry interval before reconnect attempt in seconds
-	ReconnectDuration int `yaml:"reconnectDuration" default:"5" desc:"config:rabbitmq:reconnectDuration"`
+	// ReconnectDuration retry interval before reconnect attempt in milliseconds
+	ReconnectDuration int `yaml:"reconnectDurationMs" default:"5000" desc:"config:rabbitmq:reconnectDurationMs"`
 
-	// ConnectTimeout maximum time for TCP/TLS/AMQP handshake in seconds
-	ConnectTimeout int `yaml:"connectTimeout" default:"10" desc:"config:rabbitmq:connectTimeout"`
+	// ConnectTimeout maximum time for TCP/TLS/AMQP handshake in milliseconds
+	ConnectTimeout int `yaml:"connectTimeoutMs" default:"10000" desc:"config:rabbitmq:connectTimeoutMs"`
 
-	// PublishTimeout maximum time for one publish attempt and broker confirm in seconds
-	PublishTimeout int `yaml:"publishTimeout" default:"5" desc:"config:rabbitmq:publishTimeout"`
+	// PublishTimeout maximum time for one publish attempt and broker confirm in milliseconds
+	PublishTimeout int `yaml:"publishTimeoutMs" default:"5000" desc:"config:rabbitmq:publishTimeoutMs"`
 
 	// DedicatedConnection enables dedicated connection per producer/consumer
 	// Helps isolate workload and improve stability
@@ -195,8 +195,8 @@ type RedisConfig struct {
 	// AutoReconnect automatically reconnects when connection is lost
 	AutoReconnect bool `yaml:"autoReconnect" default:"false" desc:"config:redis:autoReconnect"`
 
-	// StartInterval reconnect retry interval in seconds
-	StartInterval int `yaml:"startInterval" default:"2" desc:"config:redis:startInterval"`
+	// StartInterval reconnect retry interval in milliseconds
+	StartInterval int `yaml:"startIntervalMs" default:"2000" desc:"config:redis:startIntervalMs"`
 
 	// MaxError maximum allowed reconnect errors before stopping retries
 	MaxError int `yaml:"maxError" default:"5" desc:"config:redis:maxError"`
@@ -204,11 +204,11 @@ type RedisConfig struct {
 	// PoolSize maximum total Redis connections in pool
 	PoolSize int `yaml:"poolSize" default:"10" desc:"config:redis:poolSize"`
 
-	// PoolTimeout maximum wait time for acquiring connection from pool
-	PoolTimeout int `yaml:"poolTimeout" default:"30" desc:"config:redis:poolTimeout"`
+	// PoolTimeout maximum wait time for acquiring connection from pool in milliseconds
+	PoolTimeout int `yaml:"poolTimeoutMs" default:"30000" desc:"config:redis:poolTimeoutMs"`
 
-	// ConnectTimeout maximum time to establish Redis connection
-	ConnectTimeout int `yaml:"connectTimeout" default:"5" desc:"config:redis:connectTimeout"`
+	// ConnectTimeout maximum time to establish Redis connection in milliseconds
+	ConnectTimeout int `yaml:"connectTimeoutMs" default:"5000" desc:"config:redis:connectTimeoutMs"`
 
 	// MinIdleConn minimum idle connections maintained
 	// Helps improve performance by keeping warm connections
@@ -218,9 +218,9 @@ type RedisConfig struct {
 	// Excess idle connections may be closed automatically
 	MaxIdleConn int `yaml:"maxIdleConn" default:"15" desc:"config:redis:maxIdleConn"`
 
-	// ConnMaxLife maximum lifetime of Redis connection in seconds
+	// ConnMaxLife maximum lifetime of Redis connection in milliseconds
 	// Old connections will be recycled automatically
-	ConnMaxLife int `yaml:"connMaxLife" default:"600" desc:"config:redis:connMaxLife"`
+	ConnMaxLife int `yaml:"connMaxLifeMs" default:"600000" desc:"config:redis:connMaxLifeMs"`
 
 	// UseMock enables mock Redis implementation
 	UseMock bool `yaml:"useMock" default:"false" desc:"config:useMock"`

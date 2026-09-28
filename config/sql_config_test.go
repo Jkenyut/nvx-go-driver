@@ -47,17 +47,17 @@ func TestSQLConfig_WithDefaults(t *testing.T) {
 				if cfg.MinConn != expectedMinConn {
 					t.Errorf("MinConn = %d, want %d", cfg.MinConn, expectedMinConn)
 				}
-				if cfg.MaxConnLifetime != 3600 {
-					t.Errorf("MaxConnLifetime = %d, want 3600", cfg.MaxConnLifetime)
+				if cfg.MaxConnLifetime != 3600000 {
+					t.Errorf("MaxConnLifetime = %d, want 3600000", cfg.MaxConnLifetime)
 				}
-				if cfg.MaxConnIdleTime != 600 {
-					t.Errorf("MaxConnIdleTime = %d, want 600", cfg.MaxConnIdleTime)
+				if cfg.MaxConnIdleTime != 600000 {
+					t.Errorf("MaxConnIdleTime = %d, want 600000", cfg.MaxConnIdleTime)
 				}
-				if cfg.HealthCheckPeriod != 15 {
-					t.Errorf("HealthCheckPeriod = %d, want 15", cfg.HealthCheckPeriod)
+				if cfg.HealthCheckPeriod != 15000 {
+					t.Errorf("HealthCheckPeriod = %d, want 15000", cfg.HealthCheckPeriod)
 				}
-				if cfg.ConnectTimeout != 10 {
-					t.Errorf("ConnectTimeout = %d, want 10", cfg.ConnectTimeout)
+				if cfg.ConnectTimeout != 10000 {
+					t.Errorf("ConnectTimeout = %d, want 10000", cfg.ConnectTimeout)
 				}
 			},
 		},

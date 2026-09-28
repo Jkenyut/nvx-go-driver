@@ -60,69 +60,127 @@ type Consumer struct {
 	args      amqp.Table
 }
 
-// NewConsumer creates a new consumer.
+// ConsumerOption configures a RabbitMQ Consumer.
+type ConsumerOption func(*Consumer)
+
+// WithConsumerQos sets the prefetch QoS count.
+func WithConsumerQos(qos int) ConsumerOption {
+	return func(c *Consumer) {
+		c.qos = qos
+	}
+}
+
+// WithAutoAck configures auto acknowledgment mode.
+func WithAutoAck(autoAck bool) ConsumerOption {
+	return func(c *Consumer) {
+		c.autoAck = autoAck
+	}
+}
+
+// WithExclusive sets exclusive consumer mode.
+func WithExclusive(exclusive bool) ConsumerOption {
+	return func(c *Consumer) {
+		c.exclusive = exclusive
+	}
+}
+
+// WithNoLocal sets noLocal mode.
+func WithNoLocal(noLocal bool) ConsumerOption {
+	return func(c *Consumer) {
+		c.noLocal = noLocal
+	}
+}
+
+// WithNoWait sets noWait mode.
+func WithNoWait(noWait bool) ConsumerOption {
+	return func(c *Consumer) {
+		c.noWait = noWait
+	}
+}
+
+// WithConsumerArgs sets AMQP consumer arguments table.
+func WithConsumerArgs(args amqp.Table) ConsumerOption {
+	return func(c *Consumer) {
+		c.args = args
+	}
+}
+
+// NewConsumer creates a new consumer with functional options.
 func NewConsumer(
 	client *Client,
 	queue string,
+	opts ...ConsumerOption,
 ) *Consumer {
-	return &Consumer{
+	c := &Consumer{
 		client:  client,
 		queue:   queue,
 		autoAck: false,
 		qos:     1,
 		done:    make(chan struct{}),
 	}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
+	return c
 }
 
 // SetQos sets the QoS.
-func (c *Consumer) SetQos(
-	qos int,
-) {
+func (c *Consumer) SetQos(qos int) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.qos = qos
 }
 
 // SetAutoAck sets auto ack.
-func (c *Consumer) SetAutoAck(
-	autoAck bool,
-) {
+func (c *Consumer) SetAutoAck(autoAck bool) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.autoAck = autoAck
 }
 
 // SetExclusive sets exclusive mode.
-func (c *Consumer) SetExclusive(
-	exclusive bool,
-) {
+func (c *Consumer) SetExclusive(exclusive bool) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.exclusive = exclusive
 }
 
 // SetNoLocal sets no local.
-func (c *Consumer) SetNoLocal(
-	noLocal bool,
-) {
+func (c *Consumer) SetNoLocal(noLocal bool) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.noLocal = noLocal
 }
 
 // SetNoWait sets no wait.
-func (c *Consumer) SetNoWait(
-	noWait bool,
-) {
+func (c *Consumer) SetNoWait(noWait bool) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.noWait = noWait
 }
 
 // SetArgs sets the arguments.
-func (c *Consumer) SetArgs(
-	args amqp.Table,
-) {
+func (c *Consumer) SetArgs(args amqp.Table) {
+	if c.started.Load() {
+		return
+	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
 	c.args = args

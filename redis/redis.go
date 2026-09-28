@@ -40,7 +40,19 @@ type Metrics struct {
 	StaleConns    func() float64
 }
 
-// NewClient creates a new Redis client with the provided configuration.
+// Option configures a Redis Client.
+type Option func(*Client)
+
+// WithLogger sets a custom logger for the Redis client.
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		if logger != nil {
+			c.log = logger
+		}
+	}
+}
+
+// NewClient creates a new Redis client with the provided configuration and options.
 // It applies sensible defaults if specific fields (Host, Port, PoolSize) are missing.
 //
 // Defaults applied:
@@ -48,32 +60,32 @@ type Metrics struct {
 //   - Port: 6379 (if 0)
 //   - PoolSize: 10 (if 0)
 //   - MinIdleConn: 5 (if 0)
-//   - PoolTimeout: 30s (if 0)
+//   - PoolTimeout: 30000ms (30s) (if 0)
 //
 // Usage Example:
 //
 //	cfg := config.RedisConfig{
 //	    Enable: true,
 //	    Host:   "localhost",
-//	    // Port defaults to 6379
 //	}
-//	client, err := redis.NewClient(cfg, logger)
-//	if err != nil {
-//	    log.Fatal(err)
-//	}
-//	defer client.Close()
-//
-//	val, err := client.Client().Get(ctx, "key").Result()
-func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
-	}
-
+//	client, err := redis.NewClient(&cfg, redis.WithLogger(logger))
+func NewClient(cfg *config.RedisConfig, opts ...Option) (*Client, error) {
 	if !cfg.Enable {
 		return nil, errors.New("redis disabled in config")
 	}
 
 	cfg = cfg.WithDefaults()
+
+	c := &Client{
+		cfg: cfg,
+		log: slog.New(slog.DiscardHandler),
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
 
 	var opt *redis.Options
 	if cfg.Connection != "" {
@@ -100,9 +112,9 @@ func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
 	opt.PoolSize = cfg.PoolSize
 	opt.MinIdleConns = cfg.MinIdleConn
 	opt.MaxIdleConns = cfg.MaxIdleConn
-	opt.ConnMaxLifetime = time.Duration(cfg.ConnMaxLife) * time.Second
-	opt.DialTimeout = time.Duration(cfg.ConnectTimeout) * time.Second
-	opt.PoolTimeout = time.Duration(cfg.PoolTimeout) * time.Second
+	opt.ConnMaxLifetime = time.Duration(cfg.ConnMaxLife) * time.Millisecond
+	opt.DialTimeout = time.Duration(cfg.ConnectTimeout) * time.Millisecond
+	opt.PoolTimeout = time.Duration(cfg.PoolTimeout) * time.Millisecond
 
 	rdb := redis.NewClient(opt)
 
@@ -126,7 +138,7 @@ func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
 	}
 
 	for i := 1; i <= maxAttempts; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ConnectTimeout)*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ConnectTimeout)*time.Millisecond)
 		err = rdb.Ping(ctx).Err()
 		cancel()
 
@@ -135,11 +147,11 @@ func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
 		}
 
 		if i < maxAttempts {
-			logger.Warn("Redis connection failed, retrying...",
+			c.log.Warn("Redis connection failed, retrying...",
 				"error", err,
 				"attempt", i,
 				"max_attempts", maxAttempts)
-			time.Sleep(time.Duration(cfg.StartInterval) * time.Second)
+			time.Sleep(time.Duration(cfg.StartInterval) * time.Millisecond)
 		}
 	}
 
@@ -148,15 +160,12 @@ func NewClient(cfg *config.RedisConfig, logger *slog.Logger) (*Client, error) {
 		return nil, fmt.Errorf("redis connection failed after %d attempts: %w", maxAttempts, err)
 	}
 
-	logger.Info("Redis connected successfully",
+	c.log.Info("Redis connected successfully",
 		"addr", opt.Addr,
 		"pool_size", cfg.PoolSize)
 
-	return &Client{
-		client: rdb,
-		cfg:    cfg,
-		log:    logger,
-	}, nil
+	c.client = rdb
+	return c, nil
 }
 
 func redisTLSConfig(cfg *config.RedisConfig) *tls.Config {

@@ -27,12 +27,11 @@ package postgres
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"log/slog"
 	"math"
-	"math/big"
+	randv2 "math/rand/v2"
 	"net"
 	"net/url"
 	"regexp"
@@ -84,34 +83,53 @@ type Metrics struct {
 	UptimeSeconds     func() float64 // Client uptime in seconds
 }
 
-// NewClient creates a new Client with default hook (nil AfterConnect).
-// It applies defaults, connects to the database, and starts background monitoring.
-func NewClient(cfg *config.SQLConfig, logger *slog.Logger) (*Client, error) {
-	return NewClientWithHook(cfg, logger, nil, nil)
+// Option configures a PostgreSQL Client.
+type Option func(*Client)
+
+// WithLogger sets a custom logger for the PostgreSQL client.
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		if logger != nil {
+			c.log = logger
+		}
+	}
 }
 
-// NewClientWithHook creates a new Client with optional AfterConnect hook.
-// The hook is called for every new physical connection (useful for SET commands).
-func NewClientWithHook(cfg *config.SQLConfig, logger *slog.Logger,
-	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
-	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
-) (*Client, error) {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
+// WithAfterConnect registers a hook called after establishing a new physical connection.
+// Useful for running SET commands, application-level session variables, etc.
+func WithAfterConnect(fn func(ctx context.Context, conn *pgx.Conn) error) Option {
+	return func(c *Client) {
+		c.afterConnect = fn
 	}
+}
 
+// WithBeforeConnect registers a hook called before establishing a new connection.
+// Useful for custom authentication or dynamic connection parameter setup.
+func WithBeforeConnect(fn func(ctx context.Context, cfg *pgx.ConnConfig) error) Option {
+	return func(c *Client) {
+		c.beforeConnect = fn
+	}
+}
+
+// NewClient creates a new Client with the provided configuration and functional options.
+// It applies defaults, connects to the database, and starts background monitoring.
+func NewClient(cfg *config.SQLConfig, opts ...Option) (*Client, error) {
 	cfg = cfg.WithDefaults()
 	if !cfg.Enable {
 		return nil, errors.New("database disabled in config")
 	}
 
 	client := &Client{
-		cfg:           cfg,
-		log:           logger,
-		afterConnect:  afterConnect,
-		beforeConnect: beforeConnect,
-		started:       time.Now(),
-		drain:         make(chan struct{}),
+		cfg:     cfg,
+		log:     slog.New(slog.DiscardHandler),
+		started: time.Now(),
+		drain:   make(chan struct{}),
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(client)
+		}
 	}
 
 	if err := client.connectInitial(); err != nil {
@@ -122,6 +140,25 @@ func NewClientWithHook(cfg *config.SQLConfig, logger *slog.Logger,
 		go client.monitor()
 	}
 	return client, nil
+}
+
+// NewClientWithHook creates a new Client with optional AfterConnect and BeforeConnect hooks.
+// Deprecated: Use NewClient with WithAfterConnect and WithBeforeConnect options instead.
+func NewClientWithHook(cfg *config.SQLConfig, logger *slog.Logger,
+	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
+	beforeConnect func(ctx context.Context, cfg *pgx.ConnConfig) error,
+) (*Client, error) {
+	opts := make([]Option, 0, 3)
+	if logger != nil {
+		opts = append(opts, WithLogger(logger))
+	}
+	if afterConnect != nil {
+		opts = append(opts, WithAfterConnect(afterConnect))
+	}
+	if beforeConnect != nil {
+		opts = append(opts, WithBeforeConnect(beforeConnect))
+	}
+	return NewClient(cfg, opts...)
 }
 
 // internal helpers below — not part of public API
@@ -347,10 +384,10 @@ func (c *Client) createPool(ctx context.Context) (*pgxpool.Pool, error) {
 	pc.MaxConns = int32(c.cfg.MaxConn)
 	pc.MinConns = int32(c.cfg.MinConn)
 
-	pc.MaxConnLifetime = time.Duration(c.cfg.MaxConnLifetime) * time.Second
-	pc.MaxConnIdleTime = time.Duration(c.cfg.MaxConnIdleTime) * time.Second
-	pc.HealthCheckPeriod = time.Duration(c.cfg.HealthCheckPeriod) * time.Second
-	pc.ConnConfig.ConnectTimeout = time.Duration(c.cfg.ConnectTimeout) * time.Second
+	pc.MaxConnLifetime = time.Duration(c.cfg.MaxConnLifetime) * time.Millisecond
+	pc.MaxConnIdleTime = time.Duration(c.cfg.MaxConnIdleTime) * time.Millisecond
+	pc.HealthCheckPeriod = time.Duration(c.cfg.HealthCheckPeriod) * time.Millisecond
+	pc.ConnConfig.ConnectTimeout = time.Duration(c.cfg.ConnectTimeout) * time.Millisecond
 	if pc.ConnConfig.RuntimeParams == nil {
 		pc.ConnConfig.RuntimeParams = make(map[string]string)
 	}
@@ -595,6 +632,5 @@ func jitter(d time.Duration) time.Duration {
 	if maxJitter <= 0 {
 		return 0
 	}
-	j, _ := rand.Int(rand.Reader, big.NewInt(maxJitter))
-	return time.Duration(j.Int64())
+	return time.Duration(randv2.Int64N(maxJitter))
 }

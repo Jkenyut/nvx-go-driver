@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -33,15 +34,23 @@ type Client struct {
 	wg   sync.WaitGroup
 }
 
+// Option configures a RabbitMQ Client.
+type Option func(*Client)
+
+// WithLogger sets a custom logger for the RabbitMQ client.
+func WithLogger(logger *slog.Logger) Option {
+	return func(r *Client) {
+		if logger != nil {
+			r.log = logger
+		}
+	}
+}
+
 // NewClient creates a new RabbitMQ client.
 func NewClient(
 	cfg *config.RabbitMQConfig,
-	logger *slog.Logger,
+	opts ...Option,
 ) (*Client, error) {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
-	}
-
 	if !cfg.Enable {
 		return nil, errors.New(
 			"rabbitmq disabled in config",
@@ -52,8 +61,14 @@ func NewClient(
 
 	client := &Client{
 		cfg:  cfg,
-		log:  logger,
+		log:  slog.New(slog.DiscardHandler),
 		done: make(chan struct{}),
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(client)
+		}
 	}
 
 	err := client.connect()
@@ -73,16 +88,23 @@ func NewClient(
 
 func (r *Client) connectTimeout() time.Duration {
 	if r.cfg.ConnectTimeout <= 0 {
-		return 10 * time.Second
+		return 10000 * time.Millisecond
 	}
-	return time.Duration(r.cfg.ConnectTimeout) * time.Second
+	return time.Duration(r.cfg.ConnectTimeout) * time.Millisecond
 }
 
 func (r *Client) publishTimeout() time.Duration {
 	if r.cfg.PublishTimeout <= 0 {
-		return 5 * time.Second
+		return 5000 * time.Millisecond
 	}
-	return time.Duration(r.cfg.PublishTimeout) * time.Second
+	return time.Duration(r.cfg.PublishTimeout) * time.Millisecond
+}
+
+var amqpPasswordRegex = regexp.MustCompile(`://([^:@/]+):([^@/]+)@`)
+
+// maskURL redacts passwords from connection strings/URLs for safe logging and errors.
+func maskURL(raw string) string {
+	return amqpPasswordRegex.ReplaceAllString(raw, "://$1:****@")
 }
 
 func (r *Client) connect() error {
@@ -129,9 +151,12 @@ func (r *Client) connect() error {
 	if err != nil {
 		r.ready.Store(false)
 
+		// Sanitize error string to prevent credentials from leaking
+		sanitizedErr := maskURL(err.Error())
 		return fmt.Errorf(
-			"dial rabbitmq: %w",
-			err,
+			"dial rabbitmq (%s): %s",
+			maskURL(dsn),
+			sanitizedErr,
 		)
 	}
 
@@ -157,9 +182,9 @@ func (r *Client) connect() error {
 
 func (r *Client) reconnectDuration() time.Duration {
 	if r.cfg.ReconnectDuration <= 0 {
-		return time.Second
+		return 5000 * time.Millisecond
 	}
-	return time.Duration(r.cfg.ReconnectDuration) * time.Second
+	return time.Duration(r.cfg.ReconnectDuration) * time.Millisecond
 }
 
 func (r *Client) reconnectLoop() {

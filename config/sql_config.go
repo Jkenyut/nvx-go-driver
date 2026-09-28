@@ -43,18 +43,18 @@ func (c *SQLConfig) WithDefaults() *SQLConfig {
 		c.MinConn = max(4, runtime.NumCPU()) // at least 4 for fast startup
 	}
 
-	// Time-based defaults in **seconds**
+	// Time-based defaults in **milliseconds**
 	if c.MaxConnLifetime == 0 {
-		c.MaxConnLifetime = 3600 // 1 hour — prevents stale connections
+		c.MaxConnLifetime = 3600000 // 1 hour (3,600,000 ms) — prevents stale connections
 	}
 	if c.MaxConnIdleTime == 0 {
-		c.MaxConnIdleTime = 600 // 10 minutes — frees unused memory
+		c.MaxConnIdleTime = 600000 // 10 minutes (600,000 ms) — frees unused memory
 	}
 	if c.HealthCheckPeriod == 0 {
-		c.HealthCheckPeriod = 15 // 15 seconds — fast failure detection
+		c.HealthCheckPeriod = 15000 // 15 seconds (15,000 ms) — fast failure detection
 	}
 	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10 // 10 seconds — safe for cloud/network flakes
+		c.ConnectTimeout = 10000 // 10 seconds (10,000 ms) — safe for cloud/network flakes
 	}
 
 	return c

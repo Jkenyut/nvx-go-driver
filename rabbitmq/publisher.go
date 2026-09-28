@@ -30,9 +30,22 @@ type Publisher struct {
 	wg   sync.WaitGroup
 }
 
-// NewPublisher creates a new publisher.
+// PublisherOption configures a RabbitMQ Publisher.
+type PublisherOption func(*Publisher)
+
+// WithMaxAttempts configures the maximum publish retry attempts.
+func WithMaxAttempts(attempts int) PublisherOption {
+	return func(p *Publisher) {
+		if attempts > 0 {
+			p.maxAttempts = attempts
+		}
+	}
+}
+
+// NewPublisher creates a new publisher with optional PublisherOption settings.
 func NewPublisher(
 	client *Client,
+	opts ...PublisherOption,
 ) (*Publisher, error) {
 	ch, err := client.NewChannel()
 	if err != nil {
@@ -50,6 +63,12 @@ func NewPublisher(
 		ch:          ch,
 		done:        make(chan struct{}),
 		maxAttempts: 3,
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(p)
+		}
 	}
 
 	p.startConfirmListener(ch)

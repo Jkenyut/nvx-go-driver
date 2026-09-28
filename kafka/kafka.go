@@ -56,6 +56,27 @@ type Client struct {
 	closed     atomic.Bool
 }
 
+// Option configures a Kafka Client.
+type Option func(*Client)
+
+// WithLogger sets a custom logger for the Kafka client.
+func WithLogger(logger *slog.Logger) Option {
+	return func(c *Client) {
+		if logger != nil {
+			c.log = logger
+		}
+	}
+}
+
+// WithDialer sets a custom kafka.Dialer.
+func WithDialer(dialer *kafka.Dialer) Option {
+	return func(c *Client) {
+		if dialer != nil {
+			c.dialer = dialer
+		}
+	}
+}
+
 // NewClient creates a new Kafka factory based on segmentio/kafka-go.
 // It validates connection by dialing the first broker.
 //
@@ -63,16 +84,23 @@ type Client struct {
 //   - Host: "127.0.0.1:9092" (if empty)
 //   - SecurityProtocol: "SASL_SSL" (if username set but protocol empty)
 //   - Mechanism: "PLAIN"
-func NewClient(cfg *config.KafkaConfig, logger *slog.Logger) (*Client, error) {
-	if logger == nil {
-		logger = slog.New(slog.DiscardHandler)
-	}
-
+func NewClient(cfg *config.KafkaConfig, opts ...Option) (*Client, error) {
 	if !cfg.Enable {
 		return nil, errors.New("kafka disabled in config")
 	}
 
 	cfg = cfg.WithDefaults()
+
+	c := &Client{
+		cfg: cfg,
+		log: slog.New(slog.DiscardHandler),
+	}
+
+	for _, opt := range opts {
+		if opt != nil {
+			opt(c)
+		}
+	}
 
 	var mechanism sasl.Mechanism
 	if cfg.Username != "" {
@@ -104,11 +132,14 @@ func NewClient(cfg *config.KafkaConfig, logger *slog.Logger) (*Client, error) {
 		}
 	}
 
-	dialer := &kafka.Dialer{
-		Timeout:       10 * time.Second,
-		DualStack:     true,
-		TLS:           tlsConf,
-		SASLMechanism: mechanism,
+	dialer := c.dialer
+	if dialer == nil {
+		dialer = &kafka.Dialer{
+			Timeout:       10 * time.Second,
+			DualStack:     true,
+			TLS:           tlsConf,
+			SASLMechanism: mechanism,
+		}
 	}
 
 	rawBrokers := strings.Split(cfg.Brokers, ",")
@@ -146,14 +177,11 @@ func NewClient(cfg *config.KafkaConfig, logger *slog.Logger) (*Client, error) {
 		return nil, errors.New("no kafka brokers configured")
 	}
 
-	logger.Info("Kafka config valid and reachable", "brokers", cfg.Brokers)
+	c.log.Info("Kafka config valid and reachable", "brokers", cfg.Brokers)
 
-	return &Client{
-		cfg:     cfg,
-		dialer:  dialer,
-		log:     logger,
-		brokers: brokerList,
-	}, nil
+	c.dialer = dialer
+	c.brokers = brokerList
+	return c, nil
 }
 
 // NewWriter creates a new Kafka Writer (Producer).

@@ -50,7 +50,7 @@ func TestWithDefaults(t *testing.T) {
 func TestNewClient_Disabled(t *testing.T) {
 	cfg := config.KafkaConfig{Enable: false}
 
-	client, err := NewClient(&cfg, nil)
+	client, err := NewClient(&cfg, WithLogger(nil), WithDialer(nil))
 	if err == nil {
 		t.Error("expected error when disabled, got nil")
 	}

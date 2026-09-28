@@ -1,7 +1,7 @@
 package config
 
 // WithDefaults applies sensible defaults for amqp091-go client configuration.
-// All time-based values are in **seconds** to match time.Duration usage.
+// All time-based values are in **milliseconds** to match time.Duration usage.
 func (c *RabbitMQConfig) WithDefaults() *RabbitMQConfig {
 	if c == nil {
 		return nil
@@ -19,13 +19,13 @@ func (c *RabbitMQConfig) WithDefaults() *RabbitMQConfig {
 		c.Password = "guest"
 	}
 	if c.ReconnectDuration == 0 {
-		c.ReconnectDuration = 5
+		c.ReconnectDuration = 5000 // 5 seconds
 	}
 	if c.ConnectTimeout == 0 {
-		c.ConnectTimeout = 10
+		c.ConnectTimeout = 10000 // 10 seconds
 	}
 	if c.PublishTimeout == 0 {
-		c.PublishTimeout = 5
+		c.PublishTimeout = 5000 // 5 seconds
 	}
 	return c
 }

@@ -40,7 +40,14 @@ Backed by `pgx/v5`. Supports graceful pool swapping on failure and transaction w
 ```go
 import "github.com/Jkenyut/nvx-go-driver/postgres"
 
-dbClient, err := postgres.NewClient(cfg.WithDefaults(), log)
+// Functional options: WithLogger, WithAfterConnect, WithBeforeConnect
+dbClient, err := postgres.NewClient(&cfg,
+    postgres.WithLogger(log),
+    postgres.WithAfterConnect(func(ctx context.Context, conn *pgx.Conn) error {
+        _, err := conn.Exec(ctx, "SET timezone = 'UTC'")
+        return err
+    }),
+)
 defer dbClient.Close()
 
 // Simple query
@@ -60,21 +67,23 @@ Backed by `amqp091-go` with **infinite auto-reconnect**, topology helpers, and i
 ```go
 import "github.com/Jkenyut/nvx-go-driver/rabbitmq"
 
-mq, err := rabbitmq.NewClient(cfg, log)
+mq, err := rabbitmq.NewClient(&cfg, rabbitmq.WithLogger(log))
 
 // Topology Setup Helper
 mq.DeclareExchange("my_exchange", "direct", true, false, false, false, nil)
 mq.DeclareQueue("my_queue", true, false, false, false, nil)
 mq.BindQueue("my_queue", "my_routing_key", "my_exchange", false, nil)
 
-// Publisher (Auto-injects MessageId & Timestamp for Idempotency)
-pub, _ := rabbitmq.NewPublisher(mq)
-pub.SetMaxAttempts(3) // 3 = At-Least-Once, 1 = At-Most-Once
+// Publisher with options (WithMaxAttempts)
+pub, _ := rabbitmq.NewPublisher(mq, rabbitmq.WithMaxAttempts(3))
 msg := &amqp091.Publishing{Body: []byte("hello")}
 err = pub.Publish(ctx, "my_exchange", "my_routing_key", msg, false, false)
 
-// Consumer (Graceful Shutdown ready)
-consumer := rabbitmq.NewConsumer(mq, "my_queue")
+// Consumer with functional options (WithConsumerQos, WithAutoAck, etc.)
+consumer := rabbitmq.NewConsumer(mq, "my_queue",
+    rabbitmq.WithConsumerQos(10),
+    rabbitmq.WithAutoAck(false),
+)
 consumer.Start(ctx, func(ctx context.Context, msg amqp091.Delivery) rabbitmq.Action {
     fmt.Println(string(msg.Body))
     return rabbitmq.ActionAck // Automatically acks the message
@@ -89,7 +98,7 @@ Backed by `segmentio/kafka-go`. A highly modern, pure-go driver with native SASL
 ```go
 import "github.com/Jkenyut/nvx-go-driver/kafka"
 
-kafkaClient, err := kafka.NewClient(cfg, log)
+kafkaClient, err := kafka.NewClient(&cfg, kafka.WithLogger(log))
 
 // Shortcut: Simple Publish (Synchronous with Partition Key)
 err = kafkaClient.Publish(ctx, "my-topic", []byte("user_123"), []byte("payload data"))
@@ -97,14 +106,6 @@ err = kafkaClient.Publish(ctx, "my-topic", []byte("user_123"), []byte("payload d
 // Consumer (Reader)
 reader := kafkaClient.NewReader("my-topic", "my-consumer-group")
 defer reader.Close()
-
-for {
-    msg, err := reader.ReadMessage(ctx)
-    if err != nil {
-        break // Context cancelled or connection dropped
-    }
-    fmt.Printf("Received: %s\n", string(msg.Value))
-}
 ```
 
 ### 5. Redis
@@ -114,7 +115,7 @@ Backed by `go-redis/v9`.
 ```go
 import "github.com/Jkenyut/nvx-go-driver/redis"
 
-redisClient, err := redis.NewClient(cfg, log)
+redisClient, err := redis.NewClient(&cfg, redis.WithLogger(log))
 defer redisClient.Close()
 
 // Shortcut methods for quick JSON serialization
@@ -123,8 +124,13 @@ var user User
 err = redisClient.GetJSON(ctx, "user:1", &user)
 ```
 
-## Configuration
+## Architecture & Diagrams
 
+Detailed system architecture diagrams, lifecycle sequences, and migration specifications can be found in [ARCHITECTURE.md](file:///Users/satria/workspace/projects/nvx-go/nvx-go-driver/ARCHITECTURE.md).
+
+## Configuration (Milliseconds Standard)
+
+All time duration configurations are specified in **milliseconds** (`_ms` or `Ms`).
 All configurations are defined in `config/config.go`. This library provides a smart configuration loader that can:
 1. **Auto-generate config files**: If your config file is missing, it will create one with default values.
 2. **Auto-repair**: If your config file is missing new fields, it will append them with defaults.
