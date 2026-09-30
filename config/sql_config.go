@@ -6,7 +6,7 @@ import (
 )
 
 // WithDefaults applies sensible, battle-tested defaults for pgx/v5 pool
-// All time-based values are in **seconds** to match time.Duration usage
+// All time-based values are configured in **milliseconds**
 func (c *SQLConfig) WithDefaults() *SQLConfig {
 	if c == nil || !c.Enable {
 		return c // nil or disabled → no changes

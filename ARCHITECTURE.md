@@ -144,12 +144,14 @@ sequenceDiagram
 
 All configuration durations have been migrated from raw seconds to explicit milliseconds (`_ms` or `Ms`).
 
-| Struct | Field Name | YAML/JSON Key | Default Value | Equivalent Duration |
+| Struct | Field Name | YAML/JSON Key | Default Value | Notes / Equivalent Duration |
 | :--- | :--- | :--- | :--- | :--- |
 | **`SQLConfig`** | `MaxConnLifetime` | `max_conn_lifetime_ms` | `3600000` | 1 hour |
 | | `MaxConnIdleTime` | `max_conn_idle_time_ms` | `600000` | 10 minutes |
 | | `HealthCheckPeriod` | `health_check_period_ms` | `15000` | 15 seconds |
 | | `ConnectTimeout` | `connect_timeout_ms` | `10000` | 10 seconds |
+| | `EnableTelemetry` | `enable_telemetry` | `false` | Enables OpenTelemetry SQL tracer |
+| | `Schema` | `schema` | `"public"` | PostgreSQL `search_path` schema |
 | **`RedisConfig`** | `StartInterval` | `startIntervalMs` | `2000` | 2 seconds |
 | | `PoolTimeout` | `poolTimeoutMs` | `30000` | 30 seconds |
 | | `ConnectTimeout` | `connectTimeoutMs` | `5000` | 5 seconds |

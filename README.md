@@ -10,7 +10,7 @@
 - **Standardized API**: Consistent `NewClient(config, logger)` pattern across all drivers.
 - **Resilience**: Auto-reconnect logic customized for each protocol (PGX Pool, RabbitMQ Reconnect Loop, Kafka Dialer, etc.).
 - **Graceful Shutdown**: Built-in context handling and connection draining to prevent message loss.
-- **Observability**: Built-in Prometheus-compatible metrics.
+- **Observability**: Built-in Prometheus-compatible metrics and native OpenTelemetry distributed tracing.
 - **Structured Logging**: Fully agnostic using Go standard library `log/slog`. Accepts any `*slog.Logger` or `nil` (safe no-op via `slog.DiscardHandler`).
 - **Smart Defaults**: Minimal configuration needed (e.g., just `Enable: true` works for localhost).
 
@@ -155,9 +155,22 @@ func main() {
 
 ## Observability
 
+### 1. Prometheus Metrics
 All clients expose a `Metrics()` method returning structs suitable for Prometheus collectors.
 
 ```go
 redisMetrics := redisClient.Metrics()
 pgxMetrics := dbClient.Metrics()
 ```
+
+### 2. Distributed Tracing (OpenTelemetry)
+PostgreSQL client provides automatic query tracing with OpenTelemetry. Enable it via configuration:
+
+```yaml
+database:
+  enable: true
+  enable_telemetry: true # Enables automatic OpenTelemetry spans for SQL queries
+```
+
+When enabled, query spans (`db.client`) are automatically created using `otel.Tracer("nvx-go-driver/postgres")` with sanitized SQL query statements, statement types, and database metadata attributes.
+
