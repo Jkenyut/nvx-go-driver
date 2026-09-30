@@ -15,9 +15,9 @@
 //
 // Example:
 //
-//	client, err := postgres.NewClient(cfg.WithDefaults(), logger.L())
+//	client, err := postgres.NewClient(&cfg, postgres.WithLogger(log))
 //	if err != nil {
-//	    log.Fatal().Err(err).Msg("database connection failed")
+//	    log.Error("database connection failed", "error", err)
 //	}
 //	defer client.Close()
 //
