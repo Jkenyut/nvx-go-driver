@@ -143,6 +143,7 @@ func NewClient(cfg *config.SQLConfig, opts ...Option) (*Client, error) {
 }
 
 // NewClientWithHook creates a new Client with optional AfterConnect and BeforeConnect hooks.
+//
 // Deprecated: Use NewClient with WithAfterConnect and WithBeforeConnect options instead.
 func NewClientWithHook(cfg *config.SQLConfig, logger *slog.Logger,
 	afterConnect func(ctx context.Context, conn *pgx.Conn) error,
@@ -198,6 +199,7 @@ func (c *Client) Pool() *pgxpool.Pool {
 func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error) {
 	maskedDSN := maskPassword(buildDisplayDSN(c.cfg))
 	baseDelay := time.Second
+	var lastErr error
 	for attempt := 1; attempt <= 20; attempt++ {
 		if c.IsClosed() {
 			return nil, errors.New("client closed")
@@ -213,6 +215,7 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 				"attempt", attempt)
 			return pool, nil
 		}
+		lastErr = err
 
 		backoff := time.Duration(math.Pow(1.8, float64(attempt-1))) * baseDelay
 		if backoff > 30*time.Second {
@@ -234,6 +237,9 @@ func (c *Client) createPoolWithRetry(ctx context.Context) (*pgxpool.Pool, error)
 			return nil, errors.New("client closed")
 		case <-time.After(backoff):
 		}
+	}
+	if lastErr != nil {
+		return nil, fmt.Errorf("exhausted connection attempts: %w", lastErr)
 	}
 	return nil, errors.New("exhausted connection attempts")
 }
@@ -518,7 +524,7 @@ func (c *Client) setPool(p *pgxpool.Pool, isReconnect bool) {
 }
 
 func (c *Client) monitor() {
-	healthInterval := time.Duration(c.cfg.HealthCheckPeriod) * time.Second
+	healthInterval := time.Duration(c.cfg.HealthCheckPeriod) * time.Millisecond
 	if healthInterval <= 0 {
 		healthInterval = 5 * time.Second
 	}
