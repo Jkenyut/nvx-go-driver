@@ -212,11 +212,13 @@ func (p *Publisher) reconnectLoop() {
 				continue
 			}
 
+			p.publishLock.Lock()
 			p.lock.Lock()
 
 			select {
 			case <-p.done:
 				p.lock.Unlock()
+				p.publishLock.Unlock()
 				_ = newCh.Close()
 				return
 			default:
@@ -240,6 +242,7 @@ func (p *Publisher) reconnectLoop() {
 			p.startConfirmListener(newCh)
 
 			p.lock.Unlock()
+			p.publishLock.Unlock()
 
 			if oldCh != nil && !oldCh.IsClosed() {
 				_ = oldCh.Close()
