@@ -263,6 +263,9 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 			attribute.String("messaging.destination", topic),
 		)
 		defer span.End()
+
+		carrier := (*kafkaHeaderCarrier)(&msg.Headers)
+		otel.GetTextMapPropagator().Inject(ctx, carrier)
 	}
 
 	// WriteMessages blocks until the message is written or the context is cancelled.
@@ -271,6 +274,35 @@ func (k *Client) Publish(ctx context.Context, topic string, key, value []byte) e
 		span.RecordError(err)
 	}
 	return err
+}
+
+type kafkaHeaderCarrier []kafka.Header
+
+func (c *kafkaHeaderCarrier) Get(key string) string {
+	for _, h := range *c {
+		if strings.EqualFold(h.Key, key) {
+			return string(h.Value)
+		}
+	}
+	return ""
+}
+
+func (c *kafkaHeaderCarrier) Set(key string, val string) {
+	for i, h := range *c {
+		if strings.EqualFold(h.Key, key) {
+			(*c)[i].Value = []byte(val)
+			return
+		}
+	}
+	*c = append(*c, kafka.Header{Key: key, Value: []byte(val)})
+}
+
+func (c *kafkaHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(*c))
+	for _, h := range *c {
+		keys = append(keys, h.Key)
+	}
+	return keys
 }
 
 // Close gracefully flushes and closes the internal singleton writer if initialized.

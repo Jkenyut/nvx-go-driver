@@ -161,6 +161,11 @@ func (r *Client) connect() error {
 	}
 
 	r.lock.Lock()
+	if r.closed.Load() {
+		r.lock.Unlock()
+		_ = conn.Close()
+		return errors.New("rabbitmq client is closed")
+	}
 
 	oldConn := r.conn
 	r.conn = conn
