@@ -307,13 +307,17 @@ func (c *Client) RunInTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	}
 	defer func() {
 		if p := recover(); p != nil {
-			_ = tx.Rollback(ctx) // best-effort: error is intentionally ignored after panic
-			panic(p)             // re-panic after rollback
+			rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = tx.Rollback(rbCtx) // best-effort: error is intentionally ignored after panic
+			cancel()
+			panic(p) // re-panic after rollback
 		}
 	}()
 
 	if err := fn(tx); err != nil {
-		_ = tx.Rollback(ctx) // best-effort: original error takes precedence
+		rbCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = tx.Rollback(rbCtx) // best-effort: original error takes precedence
+		cancel()
 		return err
 	}
 	return tx.Commit(ctx)

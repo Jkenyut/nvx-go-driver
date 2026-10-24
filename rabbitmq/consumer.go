@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Jkenyut/nvx-go-telemetry/telemetry"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -345,7 +346,8 @@ func (c *Consumer) consume(
 						}
 
 						if !autoAck {
-							_ = msg.Nack(false, true)
+							// Discard poison-pill message to prevent infinite crash loops
+							_ = msg.Nack(false, false)
 						}
 					}
 					if span != nil {
@@ -354,11 +356,17 @@ func (c *Consumer) consume(
 				}()
 
 				if c.client.cfg.EnableTelemetry {
+					extractedCtx := telemetry.ExtractAnyMap(ctx, msg.Headers)
 					tracer := otel.Tracer("nvx-go-driver/rabbitmq")
-					ctx, span = tracer.Start(ctx, "RabbitMQ Consume", trace.WithSpanKind(trace.SpanKindConsumer))
-					span.SetAttributes(
-						attribute.String("messaging.system", "rabbitmq"),
-						attribute.String("messaging.destination", queue),
+					ctx, span = tracer.Start(
+						extractedCtx,
+						"RabbitMQ Consume",
+						trace.WithSpanKind(trace.SpanKindConsumer),
+						trace.WithAttributes(
+							attribute.String("messaging.system", "rabbitmq"),
+							attribute.String("messaging.destination", queue),
+							attribute.String("messaging.message_id", msg.MessageId),
+						),
 					)
 				}
 

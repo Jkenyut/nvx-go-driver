@@ -44,17 +44,6 @@ func LoadInto[T any](configFile string, c *T) error {
 		if unmarshalErr := yaml.Unmarshal(data, c); unmarshalErr != nil {
 			return fmt.Errorf("failed to parse config file: %w", unmarshalErr)
 		}
-
-		// 3. Write Config Back (Persist Defaults / Updates)
-		// This ensures that if the user deleted a key or a new field was added, it persists back with the default value.
-		newData, marshalErr := yaml.Marshal(c)
-		if marshalErr != nil {
-			return fmt.Errorf("failed to marshal config: %w", marshalErr)
-		}
-
-		if writeErr := os.WriteFile(configFile, newData, 0o600); writeErr != nil {
-			_, _ = fmt.Fprintf(os.Stderr, "[config] warning: failed to write config file: %v\n", writeErr)
-		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("error checking config file: %w", err)
 	} else {

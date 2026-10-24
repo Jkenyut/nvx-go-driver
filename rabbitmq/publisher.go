@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/Jkenyut/nvx-go-helper/cryptoutil"
+	"github.com/Jkenyut/nvx-go-telemetry/telemetry"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -289,8 +290,7 @@ func (p *Publisher) Publish(
 	var lastErr error
 
 	if msg.MessageId == "" {
-		v7, _ := uuid.NewV7()
-		msg.MessageId = v7.String()
+		msg.MessageId = cryptoutil.V7()
 	}
 	if msg.Timestamp.IsZero() {
 		msg.Timestamp = time.Now().UTC()
@@ -357,6 +357,11 @@ func (p *Publisher) publishOnce(
 		)
 		defer span.End()
 		publishCtx = ctx
+
+		if msg.Headers == nil {
+			msg.Headers = make(amqp.Table)
+		}
+		telemetry.InjectAnyMap(publishCtx, msg.Headers)
 	}
 
 	seqNo := ch.GetNextPublishSeqNo()
